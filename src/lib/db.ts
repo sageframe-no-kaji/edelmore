@@ -103,3 +103,31 @@ export function updateSessionExpiry(db: Database, id: string, expiresAt: string)
 export function deleteSession(db: Database, id: string): void {
   db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
 }
+
+export function getEntry(db: Database, userId: number, entryDate: string): Entry | undefined {
+  return db
+    .prepare('SELECT * FROM entries WHERE user_id = ? AND entry_date = ?')
+    .get(userId, entryDate) as Entry | undefined;
+}
+
+export function upsertEntry(
+  db: Database,
+  userId: number,
+  entryDate: string,
+  content: string
+): void {
+  db.prepare(
+    `INSERT INTO entries (user_id, entry_date, content, updated_at)
+     VALUES (?, ?, ?, datetime('now'))
+     ON CONFLICT(user_id, entry_date)
+     DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at`
+  ).run(userId, entryDate, content);
+}
+
+export function listEntryDates(db: Database, userId: number): string[] {
+  return (
+    db
+      .prepare('SELECT entry_date FROM entries WHERE user_id = ? ORDER BY entry_date DESC')
+      .all(userId) as { entry_date: string }[]
+  ).map((r) => r.entry_date);
+}

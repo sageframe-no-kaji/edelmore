@@ -7,10 +7,13 @@ import {
   createSession,
   createUser,
   deleteSession,
+  getEntry,
   getSession,
   getUserById,
   getUserByUsername,
+  listEntryDates,
   updateSessionExpiry,
+  upsertEntry,
 } from './db.js';
 
 function freshDb(): Database {
@@ -129,5 +132,52 @@ describe('session operations', () => {
 
   it('deleteSession on non-existent id is a no-op', () => {
     expect(() => deleteSession(db, 'nope')).not.toThrow();
+  });
+});
+
+describe('entry operations', () => {
+  let db: Database;
+  let userId: number;
+
+  beforeEach(() => {
+    db = createDb(':memory:');
+    userId = createUser(db, 'Iona', 'hash1');
+  });
+
+  it('getEntry returns undefined before any write', () => {
+    expect(getEntry(db, userId, '2026-05-14')).toBeUndefined();
+  });
+
+  it('upsertEntry creates an entry and getEntry retrieves it', () => {
+    upsertEntry(db, userId, '2026-05-14', 'Hello diary.');
+    const entry = getEntry(db, userId, '2026-05-14');
+    expect(entry).toMatchObject({
+      user_id: userId,
+      entry_date: '2026-05-14',
+      content: 'Hello diary.',
+    });
+  });
+
+  it('upsertEntry updates existing content', () => {
+    upsertEntry(db, userId, '2026-05-14', 'Draft.');
+    upsertEntry(db, userId, '2026-05-14', 'Final.');
+    expect(getEntry(db, userId, '2026-05-14')?.content).toBe('Final.');
+  });
+
+  it('entries are per-user — different users do not share entries', () => {
+    const userId2 = createUser(db, 'Isla', 'hash2');
+    upsertEntry(db, userId, '2026-05-14', 'Iona entry.');
+    expect(getEntry(db, userId2, '2026-05-14')).toBeUndefined();
+  });
+
+  it('listEntryDates returns empty array when no entries', () => {
+    expect(listEntryDates(db, userId)).toEqual([]);
+  });
+
+  it('listEntryDates returns dates most-recent-first', () => {
+    upsertEntry(db, userId, '2026-05-10', 'a');
+    upsertEntry(db, userId, '2026-05-14', 'b');
+    upsertEntry(db, userId, '2026-05-01', 'c');
+    expect(listEntryDates(db, userId)).toEqual(['2026-05-14', '2026-05-10', '2026-05-01']);
   });
 });
