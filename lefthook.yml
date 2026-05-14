@@ -1,0 +1,11 @@
+pre-commit:
+  parallel: true
+  commands:
+    biome:
+      glob: "*.{js,ts,json}"
+      run: npx biome check --apply {staged_files}
+      stage_fixed: true
+    svelte-check:
+      run: npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json
+    test:
+      run: npm run test
