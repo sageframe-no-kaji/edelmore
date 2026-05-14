@@ -1,24 +1,105 @@
-// SQLite schema — committed for reference; implementation in first building ho
-//
-// CREATE TABLE users (
-//   id         INTEGER PRIMARY KEY,
-//   username   TEXT UNIQUE NOT NULL,
-//   pin_hash   TEXT NOT NULL,
-//   cover_id   TEXT NOT NULL DEFAULT 'meadow',
-//   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-// );
-//
-// CREATE TABLE entries (
-//   id         INTEGER PRIMARY KEY,
-//   user_id    INTEGER NOT NULL REFERENCES users(id),
-//   entry_date DATE NOT NULL,
-//   content    TEXT NOT NULL DEFAULT '',
-//   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-//   UNIQUE(user_id, entry_date)
-// );
-//
-// CREATE TABLE sessions (
-//   id         TEXT PRIMARY KEY,
-//   user_id    INTEGER NOT NULL REFERENCES users(id),
-//   expires_at TIMESTAMP NOT NULL
-// );
+import BetterSqlite3 from 'better-sqlite3';
+import type { Database } from 'better-sqlite3';
+
+export type { Database };
+
+export type User = {
+  id: number;
+  username: string;
+  pin_hash: string;
+  cover_id: string;
+  created_at: string;
+};
+
+export type Session = {
+  id: string;
+  user_id: number;
+  expires_at: string;
+};
+
+export type Entry = {
+  id: number;
+  user_id: number;
+  entry_date: string;
+  content: string;
+  updated_at: string;
+};
+
+export function createDb(path: string): Database {
+  const db = new BetterSqlite3(path);
+  applySchema(db);
+  return db;
+}
+
+export function applySchema(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id         INTEGER PRIMARY KEY,
+      username   TEXT UNIQUE NOT NULL,
+      pin_hash   TEXT NOT NULL,
+      cover_id   TEXT NOT NULL DEFAULT 'meadow',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS entries (
+      id         INTEGER PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id),
+      entry_date DATE NOT NULL,
+      content    TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, entry_date)
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      id         TEXT PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id),
+      expires_at TIMESTAMP NOT NULL
+    );
+  `);
+}
+
+export function getUserByUsername(db: Database, username: string): User | undefined {
+  return db.prepare('SELECT * FROM users WHERE username = ?').get(username) as User | undefined;
+}
+
+export function getUserById(
+  db: Database,
+  id: number
+): { id: number; username: string; cover_id: string } | undefined {
+  return db.prepare('SELECT id, username, cover_id FROM users WHERE id = ?').get(id) as
+    | { id: number; username: string; cover_id: string }
+    | undefined;
+}
+
+export function createUser(db: Database, username: string, pinHash: string): number {
+  const result = db
+    .prepare('INSERT INTO users (username, pin_hash) VALUES (?, ?)')
+    .run(username, pinHash);
+  return result.lastInsertRowid as number;
+}
+
+export function countUsers(db: Database): number {
+  return (db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }).count;
+}
+
+export function getSession(db: Database, id: string): Session | undefined {
+  return db
+    .prepare("SELECT * FROM sessions WHERE id = ? AND expires_at > datetime('now')")
+    .get(id) as Session | undefined;
+}
+
+export function createSession(db: Database, id: string, userId: number, expiresAt: string): void {
+  db.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)').run(
+    id,
+    userId,
+    expiresAt
+  );
+}
+
+export function updateSessionExpiry(db: Database, id: string, expiresAt: string): void {
+  db.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?').run(expiresAt, id);
+}
+
+export function deleteSession(db: Database, id: string): void {
+  db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+}

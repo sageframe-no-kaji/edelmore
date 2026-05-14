@@ -1,13 +1,10 @@
-// See https://svelte.dev/docs/kit/types#app.d.ts for documentation
+import type { Database } from 'better-sqlite3';
 
 declare global {
   namespace App {
-    // interface Error {}
-    // interface Locals {}
-    // interface PageData {}
-    // interface PageState {}
-    // interface Platform {}
+    interface Locals {
+      db: Database;
+      user?: { id: number; username: string; cover_id: string };
+    }
   }
 }
-
-export {};

@@ -8,8 +8,11 @@ export default defineConfig({
     include: ['src/**/*.{test,spec}.{js,ts}', 'tests/**/*.{test,spec}.{js,ts}'],
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.{js,ts,svelte}'],
-      thresholds: { lines: 80 },
+      // .svelte components need browser/E2E tests, not Vitest unit tests.
+      // src/lib/index.ts is an empty barrel file; nothing to cover.
+      include: ['src/**/*.{js,ts}'],
+      exclude: ['src/lib/index.ts', 'src/app.d.ts', '**/*.test.ts', '**/*.spec.ts'],
+      thresholds: { lines: 95 },
     },
   },
 });
