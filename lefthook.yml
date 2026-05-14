@@ -3,7 +3,7 @@ pre-commit:
   commands:
     biome:
       glob: "*.{js,ts,json}"
-      run: npx biome check --apply {staged_files}
+      run: npx biome check --write {staged_files}
       stage_fixed: true
     svelte-check:
       run: npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json
