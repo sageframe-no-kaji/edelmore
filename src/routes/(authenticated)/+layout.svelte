@@ -2,8 +2,10 @@
 import { goto } from '$app/navigation';
 import { page } from '$app/stores';
 import CalendarModal from '$lib/components/CalendarModal.svelte';
+import CoverPage from '$lib/components/CoverPage.svelte';
 import Spread from '$lib/components/Spread.svelte';
 import TocPage from '$lib/components/TocPage.svelte';
+import { COVERS, findCover } from '$lib/covers.js';
 import type { EntryDatePreview } from '$lib/db.js';
 import { findSplitIndex, fixWidowOrphan, snapToWordBreak } from '$lib/overflow.js';
 import type { Snippet } from 'svelte';
@@ -33,6 +35,13 @@ let entryDatePreviews: EntryDatePreview[] = $state(
   // biome-ignore lint/suspicious/noExplicitAny: layout has no type access to child page data
   untrack(() => ($page.data as any).entryDatePreviews ?? [])
 );
+
+// Active cover — derived from the layout-level user data.
+// biome-ignore lint/suspicious/noExplicitAny: layout data merged into $page.data
+const coverId = $derived(($page.data as any).user?.cover_id ?? 'meadow');
+const activeCover = $derived(findCover(coverId));
+// biome-ignore lint/suspicious/noExplicitAny: layout data merged into $page.data
+const username = $derived(($page.data as any).user?.username ?? '');
 
 // Sync when SvelteKit navigates to a new [date] route.
 $effect(() => {
@@ -73,7 +82,15 @@ $effect(() => {
   return () => clearTimeout(timer);
 });
 
-async function navigateTo(date: string) {
+// --- Cascade flip state ---
+let flipDuration = $state(500);
+let cascadeRemaining = $state(0);
+let cascadeTargetDate = $state<string | null>(null);
+let cascadeDirection = $state<'next' | 'prev'>('next');
+// biome-ignore lint/style/useConst: bind:this requires let
+let spreadComp = $state<{ flipNext: () => void; flipPrev: () => void } | null>(null);
+
+async function doNavigateTo(date: string) {
   /* v8 ignore next 7 */
   const res = await fetch(`/api/entries/${date}`);
   if (res.ok) {
@@ -84,7 +101,48 @@ async function navigateTo(date: string) {
   await goto(`/${date}`);
 }
 
+async function navigateTo(date: string) {
+  const targetIdx = entryDatePreviews.findIndex((e) => e.entry_date === date);
+  // +2: cover (0) + toc (1) + entry spreads
+  const targetSpreadIdx = targetIdx >= 0 ? targetIdx + 2 : 2;
+  const delta = targetSpreadIdx - spreadIndex;
+
+  if (Math.abs(delta) <= 1) {
+    /* v8 ignore next */
+    await doNavigateTo(date);
+    return;
+  }
+
+  // Cascade: animate through intermediate pages, capped at ~1.5s total.
+  const steps = Math.min(Math.abs(delta) - 1, 18);
+  cascadeRemaining = steps;
+  cascadeTargetDate = date;
+  cascadeDirection = delta > 0 ? 'next' : 'prev';
+  flipDuration = 80;
+  /* v8 ignore next 4 */
+  if (cascadeDirection === 'next') {
+    spreadComp?.flipNext();
+  } else {
+    spreadComp?.flipPrev();
+  }
+}
+
 function onFlipNext() {
+  if (cascadeRemaining > 0) {
+    cascadeRemaining--;
+    if (cascadeRemaining === 0) {
+      flipDuration = 500;
+      const target = cascadeTargetDate ?? '/';
+      cascadeTargetDate = null;
+      /* v8 ignore next */
+      doNavigateTo(target);
+    } else {
+      /* v8 ignore next */
+      spreadComp?.flipNext();
+    }
+    return;
+  }
+
   if (spreadState.kind === 'cover') {
     spreadState = { kind: 'toc' };
   } else if (spreadState.kind === 'toc') {
@@ -101,6 +159,21 @@ function onFlipNext() {
 }
 
 function onFlipPrev() {
+  if (cascadeRemaining > 0) {
+    cascadeRemaining--;
+    if (cascadeRemaining === 0) {
+      flipDuration = 500;
+      const target = cascadeTargetDate ?? '/';
+      cascadeTargetDate = null;
+      /* v8 ignore next */
+      doNavigateTo(target);
+    } else {
+      /* v8 ignore next */
+      spreadComp?.flipPrev();
+    }
+    return;
+  }
+
   if (spreadState.kind === 'entry') {
     if (entryPageSpread > 0) {
       entryPageSpread -= 1;
@@ -134,7 +207,6 @@ function getSpreadIndex(): number {
 }
 const spreadIndex = $derived(getSpreadIndex());
 const spreadCount = $derived(entryDatePreviews.length + 2);
-// Primitive value — only changes when the actual date changes, not on same-date object reassignment.
 const entryDate = $derived(spreadState.kind === 'entry' ? spreadState.date : null);
 const entryDates = $derived(new Set(entryDatePreviews.map((e) => e.entry_date)));
 
@@ -181,7 +253,6 @@ onMount(() => {
   };
 });
 
-// Reset split points and page when the entry date genuinely changes (not on same-date reassignment).
 $effect(() => {
   void entryDate;
   untrack(() => {
@@ -192,7 +263,6 @@ $effect(() => {
   });
 });
 
-// Debounced multi-page split computation — runs when content changes.
 $effect(() => {
   const c = content;
   /* v8 ignore next 46 */
@@ -245,7 +315,6 @@ $effect(() => {
   return () => clearTimeout(timer);
 });
 
-// Recompute page scroll offsets when split points or spread index changes.
 $effect(() => {
   const spread = entryPageSpread;
   const points = splitPoints;
@@ -274,7 +343,6 @@ $effect(() => {
   });
 });
 
-// Apply scroll positions to textarea elements when they change.
 /* v8 ignore next 3 */
 $effect(() => {
   if (textareaEl) textareaEl.scrollTop = targetScrollTopLeft;
@@ -301,12 +369,14 @@ $effect(() => {
 	>
 		<div class="relative w-full max-w-5xl h-full max-h-[80vh]">
 			<Spread
+				bind:this={spreadComp}
 				{onFlipPrev}
 				{onFlipNext}
 				{canFlipPrev}
 				{canFlipNext}
 				{spreadIndex}
 				{spreadCount}
+				{flipDuration}
 			>
 				{#snippet leftPage()}
 					{#if spreadState.kind === 'entry'}
@@ -348,10 +418,7 @@ $effect(() => {
 					{:else if spreadState.kind === 'toc'}
 						<TocPage entries={entryDatePreviews} onNavigate={navigateTo} />
 					{:else if spreadState.kind === 'cover'}
-						<div class="h-full flex flex-col items-center justify-center font-serif text-stone-600">
-							<p class="text-2xl tracking-widest">Edelmore Diary</p>
-							<p class="text-xs mt-3 text-stone-400 tracking-wide uppercase">flip to open →</p>
-						</div>
+						<CoverPage config={activeCover} {username} showSettings={true} />
 					{/if}
 				{/snippet}
 			</Spread>
@@ -403,11 +470,8 @@ $effect(() => {
 			</div>
 			<TocPage entries={entryDatePreviews} onNavigate={navigateTo} />
 		{:else}
-			<div class="flex-1 flex flex-col items-center justify-center font-serif text-stone-600 bg-[#fdf6e3]">
-				<p class="text-2xl tracking-widest">Edelmore Diary</p>
-				<button type="button" onclick={onFlipNext} class="text-sm text-stone-400 mt-4 underline">
-					Open →
-				</button>
+			<div class="flex-1 flex flex-col bg-[#fdf6e3] overflow-hidden">
+				<CoverPage config={activeCover} {username} showSettings={true} />
 			</div>
 		{/if}
 	</div>

@@ -150,6 +150,10 @@ export function makeEntryPreview(content: string): string {
   return `${firstLine.slice(0, 20)}…`;
 }
 
+export function updateUserCoverId(db: Database, userId: number, coverId: string): void {
+  db.prepare('UPDATE users SET cover_id = ? WHERE id = ?').run(coverId, userId);
+}
+
 export function listEntryDatesWithPreview(
   db: Database,
   userId: number,

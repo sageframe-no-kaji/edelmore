@@ -16,6 +16,7 @@ import {
   listUsers,
   makeEntryPreview,
   updateSessionExpiry,
+  updateUserCoverId,
   upsertEntry,
 } from './db.js';
 
@@ -91,6 +92,20 @@ describe('user operations', () => {
 
   it('listUsers returns empty array when no users exist', () => {
     expect(listUsers(db)).toEqual([]);
+  });
+
+  it('updateUserCoverId updates the cover_id for the given user', () => {
+    const id = createUser(db, 'Iona', 'hash1');
+    updateUserCoverId(db, id, 'sage');
+    const user = getUserById(db, id);
+    expect(user?.cover_id).toBe('sage');
+  });
+
+  it('updateUserCoverId does not affect other users', () => {
+    const id1 = createUser(db, 'Iona', 'hash1');
+    const id2 = createUser(db, 'Isla', 'hash2');
+    updateUserCoverId(db, id1, 'dusty-rose');
+    expect(getUserById(db, id2)?.cover_id).toBe('meadow');
   });
 });
 

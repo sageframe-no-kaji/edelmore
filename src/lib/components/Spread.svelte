@@ -8,6 +8,7 @@ type Props = {
   canFlipNext?: boolean;
   spreadIndex?: number;
   spreadCount?: number;
+  flipDuration?: number;
   leftPage?: Snippet;
   rightPage?: Snippet;
 };
@@ -19,6 +20,7 @@ const {
   canFlipNext = true,
   spreadIndex = 0,
   spreadCount = 0,
+  flipDuration = 500,
   leftPage,
   rightPage,
 }: Props = $props();
@@ -44,7 +46,7 @@ function triggerFlipNext() {
   leafEl.style.left = 'auto';
   requestAnimationFrame(() => {
     if (!leafEl) return;
-    leafEl.style.transition = 'transform 500ms cubic-bezier(0.4, 0, 0.2, 1)';
+    leafEl.style.transition = `transform ${flipDuration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
     leafEl.style.transform = 'rotateY(-180deg)';
     leafEl.addEventListener(
       'transitionend',
@@ -70,7 +72,7 @@ function triggerFlipPrev() {
   leafEl.style.right = 'auto';
   requestAnimationFrame(() => {
     if (!leafEl) return;
-    leafEl.style.transition = 'transform 500ms cubic-bezier(0.4, 0, 0.2, 1)';
+    leafEl.style.transition = `transform ${flipDuration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
     leafEl.style.transform = 'rotateY(180deg)';
     leafEl.addEventListener(
       'transitionend',
@@ -82,6 +84,15 @@ function triggerFlipPrev() {
       { once: true }
     );
   });
+}
+
+/* v8 ignore next 3 */
+export function flipNext() {
+  triggerFlipNext();
+}
+/* v8 ignore next 3 */
+export function flipPrev() {
+  triggerFlipPrev();
 }
 </script>
 
