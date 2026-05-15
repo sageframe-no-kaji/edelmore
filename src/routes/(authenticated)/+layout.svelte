@@ -4,8 +4,9 @@ import { page } from '$app/stores';
 import Spread from '$lib/components/Spread.svelte';
 import TocPage from '$lib/components/TocPage.svelte';
 import type { EntryDatePreview } from '$lib/db.js';
+import { findSplitIndex } from '$lib/overflow.js';
 import type { Snippet } from 'svelte';
-import { untrack } from 'svelte';
+import { onMount, untrack } from 'svelte';
 
 type SpreadState = { kind: 'cover' } | { kind: 'toc' } | { kind: 'entry'; date: string };
 
@@ -126,6 +127,70 @@ function getSpreadIndex(): number {
 }
 const spreadIndex = $derived(getSpreadIndex());
 const spreadCount = $derived(entryDatePreviews.length + 2);
+
+let splitIndex: number | null = $state(null);
+// biome-ignore lint/style/useConst: bind:this requires let
+let textareaEl: HTMLTextAreaElement | null = $state(null);
+let measureEl: HTMLTextAreaElement | null = null;
+// biome-ignore lint/style/useConst: bind:this requires let
+let rightPageContentEl: HTMLDivElement | null = $state(null);
+let rightPageOverflows = $state(false);
+
+/* v8 ignore next 8 */
+onMount(() => {
+  measureEl = document.createElement('textarea');
+  measureEl.style.cssText =
+    'position:absolute;visibility:hidden;pointer-events:none;overflow:hidden;resize:none;top:-9999px;left:-9999px;';
+  document.body.appendChild(measureEl);
+  return () => measureEl?.remove();
+});
+
+// Reset splitIndex immediately on any spread state change (including date navigation).
+$effect(() => {
+  void spreadState;
+  untrack(() => {
+    splitIndex = null;
+  });
+});
+
+// Debounced overflow detection — runs when content changes.
+$effect(() => {
+  const c = content;
+  /* v8 ignore next 15 */
+  const timer = setTimeout(() => {
+    if (!textareaEl || !measureEl || spreadState.kind !== 'entry') return;
+    const style = getComputedStyle(textareaEl);
+    measureEl.style.width = style.width;
+    measureEl.style.height = style.height;
+    measureEl.style.font = style.font;
+    measureEl.style.lineHeight = style.lineHeight;
+    measureEl.style.padding = style.padding;
+    const maxH = textareaEl.clientHeight;
+    const fits = (n: number) => {
+      // biome-ignore lint/style/noNonNullAssertion: guarded by null check above closure
+      measureEl!.value = c.slice(0, n);
+      // biome-ignore lint/style/noNonNullAssertion: guarded by null check above closure
+      return measureEl!.scrollHeight <= maxH;
+    };
+    splitIndex = fits(c.length) ? null : findSplitIndex(c, fits);
+  }, 300);
+  return () => clearTimeout(timer);
+});
+
+// Check if right-page overflow content itself overflows.
+$effect(() => {
+  const idx = splitIndex;
+  /* v8 ignore next 7 */
+  if (idx === null || !rightPageContentEl) {
+    rightPageOverflows = false;
+    return;
+  }
+  requestAnimationFrame(() => {
+    if (rightPageContentEl) {
+      rightPageOverflows = rightPageContentEl.scrollHeight > rightPageContentEl.clientHeight;
+    }
+  });
+});
 </script>
 
 <!-- Full-height book container -->
@@ -149,6 +214,7 @@ const spreadCount = $derived(entryDatePreviews.length + 2);
 								{($page.data as any).displayDate ?? ''}
 							</div>
 							<textarea
+								bind:this={textareaEl}
 								bind:value={content}
 								class="flex-1 w-full resize-none bg-transparent text-ink-900 font-serif text-sm leading-relaxed outline-none"
 								placeholder="Begin writing…"
@@ -160,7 +226,16 @@ const spreadCount = $derived(entryDatePreviews.length + 2);
 					{/if}
 				{/snippet}
 				{#snippet rightPage()}
-					{#if spreadState.kind === 'toc'}
+					{#if spreadState.kind === 'entry' && splitIndex !== null}
+						<div class="relative h-full px-10 py-8 font-serif">
+							<div bind:this={rightPageContentEl} class="h-full overflow-hidden">
+								<p class="text-ink-900 text-sm leading-relaxed whitespace-pre-wrap">{content.slice(splitIndex)}</p>
+							</div>
+							{#if rightPageOverflows}
+								<div class="absolute bottom-2 right-3 text-xs text-stone-400 italic">→ continued</div>
+							{/if}
+						</div>
+					{:else if spreadState.kind === 'toc'}
 						<TocPage entries={entryDatePreviews} onNavigate={navigateTo} />
 					{:else if spreadState.kind === 'cover'}
 						<div class="h-full flex flex-col items-center justify-center font-serif text-stone-600">
