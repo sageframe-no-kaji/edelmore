@@ -37,8 +37,9 @@ describe('findSplitIndex', () => {
 });
 
 describe('snapToWordBreak', () => {
-  it('returns splitAt when there are no newlines', () => {
-    expect(snapToWordBreak('hello world', 8)).toBe(8);
+  it('snaps to word boundary (space) when there are no newlines', () => {
+    // splitAt=8 lands in "wo|rld"; last space before it is at index 5 (after 'hello')
+    expect(snapToWordBreak('hello world', 8)).toBe(6);
   });
 
   it('snaps to paragraph break (double newline)', () => {
@@ -54,6 +55,12 @@ describe('snapToWordBreak', () => {
   it('falls back to single newline when no paragraph break exists', () => {
     const content = 'line one\nline two extra text';
     expect(snapToWordBreak(content, 20)).toBe(9); // after '\n' at index 8
+  });
+
+  it('falls back to word boundary (space) when no newlines exist', () => {
+    // splitAt=22 lands mid-word "ju|mps"; last space before it is at index 19 (after 'fox')
+    const content = 'the quick brown fox jumps over';
+    expect(snapToWordBreak(content, 22)).toBe(20); // after space at index 19
   });
 
   it('returns splitAt when no break precedes it', () => {

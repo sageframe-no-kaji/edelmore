@@ -28,5 +28,7 @@ export function snapToWordBreak(content: string, splitAt: number): number {
   if (paraBreak >= 0) return paraBreak + 2;
   const lineBreak = before.lastIndexOf('\n');
   if (lineBreak >= 0) return lineBreak + 1;
+  const wordBreak = before.lastIndexOf(' ');
+  if (wordBreak >= 0) return wordBreak + 1;
   return splitAt;
 }
