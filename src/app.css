@@ -1,1 +1,24 @@
 @import "tailwindcss";
+
+@theme {
+  --font-serif: "EB Garamond", Georgia, serif;
+
+  --color-cream-50: #fdfbf7;
+  --color-cream-100: #f9f3e8;
+  --color-cream-200: #f0e4cc;
+  --color-cream-300: #e4cfa8;
+  --color-cream-400: #d4b07f;
+  --color-cream-500: #c4915a;
+  --color-cream-600: #a8713d;
+  --color-cream-700: #865526;
+  --color-cream-800: #653d18;
+  --color-cream-900: #442810;
+
+  --color-ink-900: #1a1209;
+  --color-ornament-gold: #8b6914;
+}
+
+.paper {
+  background-color: var(--color-cream-50);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E");
+}

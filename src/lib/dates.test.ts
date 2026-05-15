@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDisplayDate, isValidDate, todayIso } from './dates.js';
+import { formatDisplayDate, getNextDate, getPrevDate, isValidDate, todayIso } from './dates.js';
 
 describe('isValidDate', () => {
   it('accepts a valid ISO date', () => {
@@ -42,6 +42,42 @@ describe('todayIso', () => {
 
   it('returns a valid date', () => {
     expect(isValidDate(todayIso())).toBe(true);
+  });
+});
+
+describe('getPrevDate', () => {
+  it('returns the previous calendar day', () => {
+    expect(getPrevDate('2026-05-14')).toBe('2026-05-13');
+  });
+
+  it('handles month boundaries', () => {
+    expect(getPrevDate('2026-05-01')).toBe('2026-04-30');
+  });
+
+  it('handles year boundaries', () => {
+    expect(getPrevDate('2026-01-01')).toBe('2025-12-31');
+  });
+
+  it('handles leap day boundary', () => {
+    expect(getPrevDate('2024-03-01')).toBe('2024-02-29');
+  });
+});
+
+describe('getNextDate', () => {
+  it('returns the next calendar day', () => {
+    expect(getNextDate('2026-05-14')).toBe('2026-05-15');
+  });
+
+  it('handles month boundaries', () => {
+    expect(getNextDate('2026-04-30')).toBe('2026-05-01');
+  });
+
+  it('handles year boundaries', () => {
+    expect(getNextDate('2025-12-31')).toBe('2026-01-01');
+  });
+
+  it('handles leap day', () => {
+    expect(getNextDate('2024-02-28')).toBe('2024-02-29');
   });
 });
 

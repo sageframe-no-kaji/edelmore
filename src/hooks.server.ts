@@ -38,7 +38,7 @@ export function createHandle(db: Database): Handle {
 let _db: Database | null = null;
 let _seeded = false;
 
-/* v8 ignore next 8 — singleton init runs once at server startup, not in unit tests */
+/* v8 ignore next 10 — singleton init runs once at server startup, not in unit tests */
 async function getDb(): Promise<Database> {
   if (!_db) {
     _db = createDb(process.env.DATABASE_URL ?? 'data/edelmore.db');

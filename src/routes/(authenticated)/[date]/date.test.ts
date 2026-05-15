@@ -46,4 +46,37 @@ describe('[date] load', () => {
   it('redirects to today for an impossible date', async () => {
     await expect(load(makeEvent('2026-02-30') as any)).rejects.toMatchObject({ status: 302 });
   });
+
+  it('returns prevDate as the calendar day before the requested date', async () => {
+    const result = (await load(makeEvent('2026-05-14') as any)) as any;
+    expect(result.prevDate).toBe('2026-05-13');
+  });
+
+  it('returns nextDate as the calendar day after the requested date', async () => {
+    const result = (await load(makeEvent('2026-05-14') as any)) as any;
+    expect(result.nextDate).toBe('2026-05-15');
+  });
+
+  it('returns prevContent from an existing previous entry', async () => {
+    upsertEntry(db, userId, '2026-05-13', 'Yesterday.');
+    const result = (await load(makeEvent('2026-05-14') as any)) as any;
+    expect(result.prevContent).toBe('Yesterday.');
+  });
+
+  it('returns empty string for prevContent when no previous entry exists', async () => {
+    const result = (await load(makeEvent('2026-05-14') as any)) as any;
+    expect(result.prevContent).toBe('');
+  });
+
+  it('returns prevDisplayDate as a human-readable string', async () => {
+    const result = (await load(makeEvent('2026-05-14') as any)) as any;
+    expect(result.prevDisplayDate).toContain('2026');
+    expect(result.prevDisplayDate).toContain('May');
+    expect(result.prevDisplayDate).toContain('13');
+  });
+
+  it('handles month boundaries for prevDate', async () => {
+    const result = (await load(makeEvent('2026-05-01') as any)) as any;
+    expect(result.prevDate).toBe('2026-04-30');
+  });
 });
