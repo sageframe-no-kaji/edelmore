@@ -57,7 +57,13 @@ describe('snapToWordBreak', () => {
     expect(snapToWordBreak(content, 20)).toBe(9); // after '\n' at index 8
   });
 
-  it('falls back to word boundary (space) when no newlines exist', () => {
+  it('snaps to sentence end before word boundary when no newlines', () => {
+    // splitAt=30 lands mid-second-sentence; '. ' at index 18 → return 20
+    const content = 'The first sentence. The second begins here.';
+    expect(snapToWordBreak(content, 30)).toBe(20);
+  });
+
+  it('falls back to word boundary (space) when no sentence end or newlines exist', () => {
     // splitAt=22 lands mid-word "ju|mps"; last space before it is at index 19 (after 'fox')
     const content = 'the quick brown fox jumps over';
     expect(snapToWordBreak(content, 22)).toBe(20); // after space at index 19
