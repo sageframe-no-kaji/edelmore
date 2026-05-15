@@ -17,7 +17,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   const prevDate = idx === -1 ? null : idx < dates.length - 1 ? dates[idx + 1] : null;
   const nextDate = idx === -1 ? null : idx > 0 ? dates[idx - 1] : null;
 
-  const entryDatePreviews = listEntryDatesWithPreview(locals.db, userId);
+  const entryDatePreviews = listEntryDatesWithPreview(locals.db, userId, { ascending: true });
 
   return {
     date: params.date,

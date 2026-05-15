@@ -93,12 +93,16 @@ describe('[date] load', () => {
     expect(result.entryDatePreviews).toHaveLength(0);
   });
 
-  it('returns entryDatePreviews with existing entries', async () => {
+  it('returns entryDatePreviews in ascending order (oldest first)', async () => {
     upsertEntry(db, userId, '2026-05-13', 'Yesterday.');
     upsertEntry(db, userId, '2026-05-14', 'Today.');
     const result = (await load(makeEvent('2026-05-14') as any)) as any;
     expect(result.entryDatePreviews).toHaveLength(2);
     expect(result.entryDatePreviews[0]).toMatchObject({
+      entry_date: '2026-05-13',
+      preview: 'Yesterday.',
+    });
+    expect(result.entryDatePreviews[1]).toMatchObject({
       entry_date: '2026-05-14',
       preview: 'Today.',
     });

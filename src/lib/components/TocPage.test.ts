@@ -1,0 +1,30 @@
+import { cleanup, render } from '@testing-library/svelte';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import TocPage from './TocPage.svelte';
+
+afterEach(() => cleanup());
+
+const entries = [
+  { entry_date: '2026-05-13', preview: 'Yesterday.' },
+  { entry_date: '2026-05-14', preview: 'Today.' },
+];
+
+describe('TocPage', () => {
+  it('calls onNavigate with the entry date when a row is clicked', async () => {
+    const onNavigate = vi.fn();
+    const { getAllByRole } = render(TocPage, { entries, onNavigate });
+    const buttons = getAllByRole('button');
+    buttons[0].click();
+    expect(onNavigate).toHaveBeenCalledWith('2026-05-13');
+  });
+
+  it('renders empty state when entries is empty', () => {
+    const { getByText } = render(TocPage, { entries: [], onNavigate: vi.fn() });
+    expect(getByText('No entries yet.')).toBeTruthy();
+  });
+
+  it('renders all entry rows', () => {
+    const { getAllByRole } = render(TocPage, { entries, onNavigate: vi.fn() });
+    expect(getAllByRole('button')).toHaveLength(2);
+  });
+});

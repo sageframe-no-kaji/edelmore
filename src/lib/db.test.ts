@@ -264,4 +264,20 @@ describe('listEntryDatesWithPreview', () => {
     expect(ionaResult).toHaveLength(1);
     expect(ionaResult[0].preview).toBe('Iona entry.');
   });
+
+  it('default order is DESC (most recent first)', () => {
+    upsertEntry(db, userId, '2026-05-10', 'Older.');
+    upsertEntry(db, userId, '2026-05-14', 'Newer.');
+    const result = listEntryDatesWithPreview(db, userId);
+    expect(result[0].entry_date).toBe('2026-05-14');
+    expect(result[1].entry_date).toBe('2026-05-10');
+  });
+
+  it('ascending:true returns oldest first', () => {
+    upsertEntry(db, userId, '2026-05-10', 'Older.');
+    upsertEntry(db, userId, '2026-05-14', 'Newer.');
+    const result = listEntryDatesWithPreview(db, userId, { ascending: true });
+    expect(result[0].entry_date).toBe('2026-05-10');
+    expect(result[1].entry_date).toBe('2026-05-14');
+  });
 });

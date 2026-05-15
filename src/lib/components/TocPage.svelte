@@ -1,13 +1,13 @@
 <script lang="ts">
-import { goto } from '$app/navigation';
 import { formatDisplayDate } from '$lib/dates.js';
 import type { EntryDatePreview } from '$lib/db.js';
 
 type Props = {
   entries: EntryDatePreview[];
+  onNavigate: (date: string) => void;
 };
 
-const { entries }: Props = $props();
+const { entries, onNavigate }: Props = $props();
 </script>
 
 <div class="px-8 py-10 h-full overflow-y-auto">
@@ -23,7 +23,7 @@ const { entries }: Props = $props();
         <li>
           <button
             type="button"
-            onclick={() => goto(`/${entry.entry_date}`)}
+            onclick={() => onNavigate(entry.entry_date)}
             class="w-full text-left group"
           >
             <span class="font-serif text-xs text-cream-600 block">

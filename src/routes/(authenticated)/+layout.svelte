@@ -161,7 +161,7 @@ const spreadCount = $derived(entryDatePreviews.length + 2);
 				{/snippet}
 				{#snippet rightPage()}
 					{#if spreadState.kind === 'toc'}
-						<TocPage entries={entryDatePreviews} />
+						<TocPage entries={entryDatePreviews} onNavigate={navigateTo} />
 					{:else if spreadState.kind === 'cover'}
 						<div class="h-full flex flex-col items-center justify-center font-serif text-stone-600">
 							<p class="text-2xl tracking-widest">Edelmore Diary</p>
@@ -207,7 +207,7 @@ const spreadCount = $derived(entryDatePreviews.length + 2);
 			<div class="flex items-center px-4 py-2 border-b border-stone-200">
 				<button type="button" onclick={onFlipPrev} class="text-sm text-stone-500">← Back</button>
 			</div>
-			<TocPage entries={entryDatePreviews} />
+			<TocPage entries={entryDatePreviews} onNavigate={navigateTo} />
 		{:else}
 			<div class="flex-1 flex flex-col items-center justify-center font-serif text-stone-600 bg-[#fdf6e3]">
 				<p class="text-2xl tracking-widest">Edelmore Diary</p>

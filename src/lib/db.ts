@@ -150,9 +150,16 @@ export function makeEntryPreview(content: string): string {
   return `${firstLine.slice(0, 20)}…`;
 }
 
-export function listEntryDatesWithPreview(db: Database, userId: number): EntryDatePreview[] {
+export function listEntryDatesWithPreview(
+  db: Database,
+  userId: number,
+  options: { ascending?: boolean } = {}
+): EntryDatePreview[] {
+  const order = options.ascending ? 'ASC' : 'DESC';
   const rows = db
-    .prepare('SELECT entry_date, content FROM entries WHERE user_id = ? ORDER BY entry_date DESC')
+    .prepare(
+      `SELECT entry_date, content FROM entries WHERE user_id = ? ORDER BY entry_date ${order}`
+    )
     .all(userId) as { entry_date: string; content: string }[];
   return rows.map((r) => ({
     entry_date: r.entry_date,
