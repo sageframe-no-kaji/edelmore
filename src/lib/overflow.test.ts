@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findSplitIndex, snapToWordBreak } from './overflow.js';
+import { findSplitIndex, fixWidowOrphan, snapToWordBreak } from './overflow.js';
 
 describe('findSplitIndex', () => {
   it('returns content.length when entire content fits', () => {
@@ -65,5 +65,42 @@ describe('snapToWordBreak', () => {
 
   it('returns splitAt when no break precedes it', () => {
     expect(snapToWordBreak('nospace', 5)).toBe(5);
+  });
+});
+
+describe('fixWidowOrphan', () => {
+  it('returns splitAt unchanged when no paragraph breaks exist', () => {
+    // No \n\n in content — orphan check skips; widow candidate has no preceding paragraph to snap to
+    expect(fixWidowOrphan('hello world', 0, 8, () => true)).toBe(8);
+  });
+
+  it('returns splitAt unchanged when isSingleLine always returns false', () => {
+    const content = 'first paragraph.\n\nsecond paragraph that is long.';
+    expect(fixWidowOrphan(content, 0, 30, () => false)).toBe(30);
+  });
+
+  it('fixes orphan — last paragraph fragment on current page is 1 line', () => {
+    // 'Long first paragraph.\n\nshort' — 'short' is the orphan at page bottom
+    const content = 'Long first paragraph.\n\nshort';
+    // \n\n is at index 21; orphan fragment is 'short'
+    expect(fixWidowOrphan(content, 0, content.length, (t) => t === 'short')).toBe(21);
+  });
+
+  it('fixes widow — first paragraph on next page is 1 line', () => {
+    // splitAt=26 is just after '\n\n'; next page starts with 'paragraph two.' (widow)
+    const content = 'paragraph one text here.\n\nparagraph two.';
+    // \n\n is at index 24; snap back to 24
+    expect(fixWidowOrphan(content, 0, 26, (t) => t === 'paragraph two.')).toBe(24);
+  });
+
+  it('respects offset — snaps within current page only', () => {
+    // 'prev.\n\n' occupies indices 0-6; current page starts at offset=7
+    // Last fragment 'orphan.' is 1 line; snap to \n\n at index 19 (within content)
+    const content = 'prev.\n\npage2 start.\n\norphan.';
+    expect(fixWidowOrphan(content, 7, content.length, (t) => t === 'orphan.')).toBe(19);
+  });
+
+  it('returns splitAt unchanged when splitAt <= offset', () => {
+    expect(fixWidowOrphan('hello', 5, 5, () => true)).toBe(5);
   });
 });

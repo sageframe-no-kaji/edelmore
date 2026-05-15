@@ -19,7 +19,7 @@ export function findSplitIndex(content: string, measure: (n: number) => boolean)
 
 /**
  * Snaps a character-level split point backward to the nearest paragraph break (\n\n)
- * or, failing that, to the nearest line break (\n), to avoid mid-sentence page splits.
+ * or, failing that, to the nearest line break (\n) or word boundary ( ).
  * Returns splitAt unchanged if no suitable break precedes it.
  */
 export function snapToWordBreak(content: string, splitAt: number): number {
@@ -31,4 +31,46 @@ export function snapToWordBreak(content: string, splitAt: number): number {
   const wordBreak = before.lastIndexOf(' ');
   if (wordBreak >= 0) return wordBreak + 1;
   return splitAt;
+}
+
+/**
+ * Adjusts a split point to prevent widows (1-line paragraph fragment at top of next page)
+ * and orphans (1-line paragraph fragment at bottom of current page).
+ *
+ * isSingleLine: returns true if the given text renders as exactly one line.
+ * Returns a (possibly earlier) split position, always >= offset.
+ */
+export function fixWidowOrphan(
+  content: string,
+  offset: number,
+  splitAt: number,
+  isSingleLine: (text: string) => boolean
+): number {
+  if (splitAt <= offset) return splitAt;
+
+  let result = splitAt;
+
+  // Orphan: last paragraph fragment on current page is 1 line
+  const pageStr = content.slice(offset, result);
+  const lastPara = pageStr.lastIndexOf('\n\n');
+  if (lastPara >= 0) {
+    const frag = pageStr.slice(lastPara + 2).trimEnd();
+    if (frag.length > 0 && isSingleLine(frag)) {
+      const fix = offset + lastPara;
+      if (fix > offset) result = fix;
+    }
+  }
+
+  // Widow: first paragraph fragment on next page is 1 line
+  const afterStr = content.slice(result).replace(/^\n+/, '');
+  const paraEnd = afterStr.indexOf('\n\n');
+  const widowFrag = (paraEnd >= 0 ? afterStr.slice(0, paraEnd) : afterStr).trimEnd();
+  if (widowFrag.length > 0 && isSingleLine(widowFrag)) {
+    const beforeFix = content.slice(offset, result);
+    const lastPara2 = beforeFix.lastIndexOf('\n\n');
+    const fix = lastPara2 >= 0 ? offset + lastPara2 : offset;
+    if (fix > offset) result = fix;
+  }
+
+  return result;
 }

@@ -4,7 +4,7 @@ import { page } from '$app/stores';
 import Spread from '$lib/components/Spread.svelte';
 import TocPage from '$lib/components/TocPage.svelte';
 import type { EntryDatePreview } from '$lib/db.js';
-import { findSplitIndex, snapToWordBreak } from '$lib/overflow.js';
+import { findSplitIndex, fixWidowOrphan, snapToWordBreak } from '$lib/overflow.js';
 import type { Snippet } from 'svelte';
 import { onMount, untrack } from 'svelte';
 
@@ -172,7 +172,7 @@ $effect(() => {
 // Debounced multi-page split computation — runs when content changes.
 $effect(() => {
   const c = content;
-  /* v8 ignore next 30 */
+  /* v8 ignore next 46 */
   const timer = setTimeout(() => {
     if (!textareaEl || !measureEl || spreadState.kind !== 'entry') return;
     const style = getComputedStyle(textareaEl);
@@ -184,6 +184,16 @@ $effect(() => {
     const maxH = textareaEl.clientHeight;
     const points: number[] = [];
     let offset = 0;
+    // biome-ignore lint/style/noNonNullAssertion: guarded by null check above closure
+    measureEl!.value = 'A';
+    // biome-ignore lint/style/noNonNullAssertion: guarded by null check above closure
+    const singleLineH = measureEl!.scrollHeight;
+    const isSingleLine = (text: string): boolean => {
+      // biome-ignore lint/style/noNonNullAssertion: guarded by null check above closure
+      measureEl!.value = text;
+      // biome-ignore lint/style/noNonNullAssertion: guarded by null check above closure
+      return measureEl!.scrollHeight <= singleLineH * 1.2;
+    };
     while (offset < c.length) {
       const remaining = c.slice(offset);
       // biome-ignore lint/style/noNonNullAssertion: guarded by null check above closure
@@ -197,10 +207,11 @@ $effect(() => {
         return measureEl!.scrollHeight <= maxH;
       });
       if (relSplit === 0) break;
-      // Snap backward to nearest paragraph or line break to avoid mid-sentence page splits.
       const rawSplit = offset + relSplit;
       const snapped = snapToWordBreak(c, rawSplit);
-      const actualSplit = snapped > offset ? snapped : rawSplit;
+      const preFix = snapped > offset ? snapped : rawSplit;
+      const actualSplit = fixWidowOrphan(c, offset, preFix, isSingleLine);
+      if (actualSplit <= offset) break;
       points.push(actualSplit);
       offset = actualSplit;
     }
