@@ -32,18 +32,19 @@ let leafEl = $state<HTMLDivElement | null>(null);
 const leftLayers = $derived(Math.min(spreadIndex, MAX_STACK));
 const rightLayers = $derived(Math.min(Math.max(spreadCount - spreadIndex - 1, 0), MAX_STACK));
 
-/* v8 ignore next 24 */
+/* v8 ignore next 26 */
 function triggerFlipNext() {
   if (flipping || !canFlipNext) return;
   flipping = 'next';
   if (!leafEl) return;
   leafEl.style.display = 'block';
+  leafEl.style.transformOrigin = 'left center';
   leafEl.style.transform = 'rotateY(0deg)';
   leafEl.style.right = '0';
   leafEl.style.left = 'auto';
   requestAnimationFrame(() => {
     if (!leafEl) return;
-    leafEl.style.transition = 'transform 600ms ease-in-out';
+    leafEl.style.transition = 'transform 500ms cubic-bezier(0.4, 0, 0.2, 1)';
     leafEl.style.transform = 'rotateY(-180deg)';
     leafEl.addEventListener(
       'transitionend',
@@ -57,18 +58,19 @@ function triggerFlipNext() {
   });
 }
 
-/* v8 ignore next 24 */
+/* v8 ignore next 26 */
 function triggerFlipPrev() {
   if (flipping || !canFlipPrev) return;
   flipping = 'prev';
   if (!leafEl) return;
   leafEl.style.display = 'block';
+  leafEl.style.transformOrigin = 'right center';
   leafEl.style.transform = 'rotateY(0deg)';
   leafEl.style.left = '0';
   leafEl.style.right = 'auto';
   requestAnimationFrame(() => {
     if (!leafEl) return;
-    leafEl.style.transition = 'transform 600ms ease-in-out';
+    leafEl.style.transition = 'transform 500ms cubic-bezier(0.4, 0, 0.2, 1)';
     leafEl.style.transform = 'rotateY(180deg)';
     leafEl.addEventListener(
       'transitionend',
@@ -116,7 +118,7 @@ function triggerFlipPrev() {
 		<div
 			class="leaf"
 			bind:this={leafEl}
-			style="display: none; transform-style: preserve-3d; transform-origin: left center;"
+			style="display: none; transform-style: preserve-3d;"
 		>
 			<div class="leaf-face leaf-front"></div>
 			<div class="leaf-face leaf-back"></div>
@@ -209,8 +211,13 @@ function triggerFlipPrev() {
 		background: #fdf6e3;
 	}
 
+	.leaf-front {
+		box-shadow: inset -8px 0 20px rgba(0, 0, 0, 0.08);
+	}
+
 	.leaf-back {
 		transform: rotateY(180deg);
+		box-shadow: inset 8px 0 20px rgba(0, 0, 0, 0.08);
 	}
 
 	/* Click zones */

@@ -127,6 +127,8 @@ function getSpreadIndex(): number {
 }
 const spreadIndex = $derived(getSpreadIndex());
 const spreadCount = $derived(entryDatePreviews.length + 2);
+// Primitive value — only changes when the actual date changes, not on same-date object reassignment.
+const entryDate = $derived(spreadState.kind === 'entry' ? spreadState.date : null);
 
 let splitIndex: number | null = $state(null);
 // biome-ignore lint/style/useConst: bind:this requires let
@@ -145,9 +147,9 @@ onMount(() => {
   return () => measureEl?.remove();
 });
 
-// Reset splitIndex immediately on any spread state change (including date navigation).
+// Reset splitIndex only when the entry date genuinely changes (not on same-date reassignment).
 $effect(() => {
-  void spreadState;
+  void entryDate;
   untrack(() => {
     splitIndex = null;
   });
@@ -216,7 +218,7 @@ $effect(() => {
 							<textarea
 								bind:this={textareaEl}
 								bind:value={content}
-								class="flex-1 w-full resize-none bg-transparent text-ink-900 font-serif text-sm leading-relaxed outline-none"
+								class="flex-1 w-full resize-none overflow-hidden bg-transparent text-ink-900 font-serif text-sm leading-relaxed outline-none"
 								placeholder="Begin writing…"
 							></textarea>
 							{#if saved}
