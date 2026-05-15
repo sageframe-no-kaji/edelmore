@@ -44,7 +44,7 @@ async function getDb(): Promise<Database> {
     _db = createDb(process.env.DATABASE_URL ?? 'data/edelmore.db');
   }
   if (!_seeded) {
-    await seedIfEmpty(_db);
+    seedIfEmpty(_db);
     _seeded = true;
   }
   return _db;
