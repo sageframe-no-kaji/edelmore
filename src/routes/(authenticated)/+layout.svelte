@@ -218,6 +218,7 @@ $effect(() => {
 							<textarea
 								bind:this={textareaEl}
 								bind:value={content}
+								onscroll={() => { if (textareaEl) textareaEl.scrollTop = 0; }}
 								class="flex-1 w-full resize-none overflow-hidden bg-transparent text-ink-900 font-serif text-sm leading-relaxed outline-none"
 								placeholder="Begin writing…"
 							></textarea>

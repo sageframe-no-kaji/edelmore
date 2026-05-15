@@ -239,11 +239,11 @@ function triggerFlipPrev() {
 
 	.flip-zone-prev {
 		left: -50px;
-		width: calc(15% + 50px);
+		width: calc(5% + 50px);
 	}
 
 	.flip-zone-next {
 		right: -50px;
-		width: calc(15% + 50px);
+		width: calc(5% + 50px);
 	}
 </style>
