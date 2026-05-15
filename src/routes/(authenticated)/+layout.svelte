@@ -90,14 +90,20 @@ function onFlipNext() {
     if (entryDatePreviews.length > 0) {
       navigateTo(entryDatePreviews[0].entry_date);
     }
-  } else if (spreadState.kind === 'entry' && nextDate) {
-    navigateTo(nextDate);
+  } else if (spreadState.kind === 'entry') {
+    if (entryPageSpread < entrySpreadCount - 1) {
+      entryPageSpread += 1;
+    } else if (nextDate) {
+      navigateTo(nextDate);
+    }
   }
 }
 
 function onFlipPrev() {
   if (spreadState.kind === 'entry') {
-    if (prevDate) {
+    if (entryPageSpread > 0) {
+      entryPageSpread -= 1;
+    } else if (prevDate) {
       navigateTo(prevDate);
     } else {
       spreadState = { kind: 'toc' };
@@ -111,7 +117,7 @@ const canFlipPrev = $derived(spreadState.kind !== 'cover');
 function computeCanFlipNext(): boolean {
   if (spreadState.kind === 'cover') return true;
   if (spreadState.kind === 'toc') return entryDatePreviews.length > 0;
-  return nextDate !== null;
+  return entryPageSpread < entrySpreadCount - 1 || nextDate !== null;
 }
 const canFlipNext = $derived(computeCanFlipNext());
 
@@ -130,13 +136,14 @@ const spreadCount = $derived(entryDatePreviews.length + 2);
 // Primitive value — only changes when the actual date changes, not on same-date object reassignment.
 const entryDate = $derived(spreadState.kind === 'entry' ? spreadState.date : null);
 
-let splitIndex: number | null = $state(null);
+let splitPoints: number[] = $state([]);
+let entryPageSpread = $state(0);
 // biome-ignore lint/style/useConst: bind:this requires let
 let textareaEl: HTMLTextAreaElement | null = $state(null);
 let measureEl: HTMLTextAreaElement | null = null;
-// biome-ignore lint/style/useConst: bind:this requires let
-let rightPageContentEl: HTMLDivElement | null = $state(null);
-let rightPageOverflows = $state(false);
+
+const entrySpreadCount = $derived(Math.floor(splitPoints.length / 2) + 1);
+const hasMoreContent = $derived(entryPageSpread < entrySpreadCount - 1);
 
 /* v8 ignore next 8 */
 onMount(() => {
@@ -147,18 +154,19 @@ onMount(() => {
   return () => measureEl?.remove();
 });
 
-// Reset splitIndex only when the entry date genuinely changes (not on same-date reassignment).
+// Reset split points and page when the entry date genuinely changes (not on same-date reassignment).
 $effect(() => {
   void entryDate;
   untrack(() => {
-    splitIndex = null;
+    splitPoints = [];
+    entryPageSpread = 0;
   });
 });
 
-// Debounced overflow detection — runs when content changes.
+// Debounced multi-page split computation — runs when content changes.
 $effect(() => {
   const c = content;
-  /* v8 ignore next 15 */
+  /* v8 ignore next 30 */
   const timer = setTimeout(() => {
     if (!textareaEl || !measureEl || spreadState.kind !== 'entry') return;
     const style = getComputedStyle(textareaEl);
@@ -168,30 +176,29 @@ $effect(() => {
     measureEl.style.lineHeight = style.lineHeight;
     measureEl.style.padding = style.padding;
     const maxH = textareaEl.clientHeight;
-    const fits = (n: number) => {
+    const points: number[] = [];
+    let offset = 0;
+    while (offset < c.length) {
+      const remaining = c.slice(offset);
       // biome-ignore lint/style/noNonNullAssertion: guarded by null check above closure
-      measureEl!.value = c.slice(0, n);
+      measureEl!.value = remaining;
       // biome-ignore lint/style/noNonNullAssertion: guarded by null check above closure
-      return measureEl!.scrollHeight <= maxH;
-    };
-    splitIndex = fits(c.length) ? null : findSplitIndex(c, fits);
+      if (measureEl!.scrollHeight <= maxH) break;
+      const relSplit = findSplitIndex(remaining, (n) => {
+        // biome-ignore lint/style/noNonNullAssertion: guarded by null check above closure
+        measureEl!.value = remaining.slice(0, n);
+        // biome-ignore lint/style/noNonNullAssertion: guarded by null check above closure
+        return measureEl!.scrollHeight <= maxH;
+      });
+      if (relSplit === 0) break;
+      points.push(offset + relSplit);
+      offset += relSplit;
+    }
+    splitPoints = points;
+    const newSpreadCount = Math.floor(points.length / 2) + 1;
+    if (entryPageSpread >= newSpreadCount) entryPageSpread = newSpreadCount - 1;
   }, 300);
   return () => clearTimeout(timer);
-});
-
-// Check if right-page overflow content itself overflows.
-$effect(() => {
-  const idx = splitIndex;
-  /* v8 ignore next 7 */
-  if (idx === null || !rightPageContentEl) {
-    rightPageOverflows = false;
-    return;
-  }
-  requestAnimationFrame(() => {
-    if (rightPageContentEl) {
-      rightPageOverflows = rightPageContentEl.scrollHeight > rightPageContentEl.clientHeight;
-    }
-  });
 });
 </script>
 
@@ -215,26 +222,32 @@ $effect(() => {
 							<div class="text-xs text-stone-400 mb-4 tracking-wide uppercase">
 								{($page.data as any).displayDate ?? ''}
 							</div>
-							<textarea
-								bind:this={textareaEl}
-								bind:value={content}
-								onscroll={() => { if (textareaEl) textareaEl.scrollTop = 0; }}
-								class="flex-1 w-full resize-none overflow-hidden bg-transparent text-ink-900 font-serif text-sm leading-relaxed outline-none"
-								placeholder="Begin writing…"
-							></textarea>
-							{#if saved}
-								<span class="text-xs text-stone-400 italic mt-2">Saved</span>
+							{#if entryPageSpread === 0}
+								<textarea
+									bind:this={textareaEl}
+									bind:value={content}
+									onscroll={() => { if (textareaEl) textareaEl.scrollTop = 0; }}
+									class="flex-1 w-full resize-none overflow-hidden bg-transparent text-ink-900 font-serif text-sm leading-relaxed outline-none"
+									placeholder="Begin writing…"
+								></textarea>
+								{#if saved}
+									<span class="text-xs text-stone-400 italic mt-2">Saved</span>
+								{/if}
+							{:else}
+								<div class="flex-1 overflow-hidden">
+									<p class="text-ink-900 text-sm leading-relaxed whitespace-pre-wrap">{content.slice(splitPoints[entryPageSpread * 2 - 1], splitPoints[entryPageSpread * 2] ?? content.length)}</p>
+								</div>
 							{/if}
 						</div>
 					{/if}
 				{/snippet}
 				{#snippet rightPage()}
-					{#if spreadState.kind === 'entry' && splitIndex !== null}
+					{#if spreadState.kind === 'entry' && entryPageSpread * 2 < splitPoints.length}
 						<div class="relative h-full px-10 py-8 font-serif">
-							<div bind:this={rightPageContentEl} class="h-full overflow-hidden">
-								<p class="text-ink-900 text-sm leading-relaxed whitespace-pre-wrap">{content.slice(splitIndex)}</p>
+							<div class="h-full overflow-hidden">
+								<p class="text-ink-900 text-sm leading-relaxed whitespace-pre-wrap">{content.slice(splitPoints[entryPageSpread * 2], splitPoints[entryPageSpread * 2 + 1] ?? content.length)}</p>
 							</div>
-							{#if rightPageOverflows}
+							{#if hasMoreContent}
 								<div class="absolute bottom-2 right-3 text-xs text-stone-400 italic">→ continued</div>
 							{/if}
 						</div>
