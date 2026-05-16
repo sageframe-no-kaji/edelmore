@@ -39,3 +39,10 @@ data/
 # ─── Private prompts (Ho System convention) ─────────────────────────────
 prompts/
 ho-process/
+
+# Test coverage
+coverage/
+
+# Reference images
+*.jpg
+*.png
