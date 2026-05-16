@@ -203,10 +203,10 @@ function getSpreadIndex(): number {
 }
 const spreadIndex = $derived(getSpreadIndex());
 const spreadCount = $derived(entryDatePreviews.length + 2);
-// Cover: right page = front cover (whole right page clickable).
-// TOC: left page = Ex Libris (whole left page flips back to cover).
-const prevZonePct = $derived(spreadIndex === 1 ? 50 : 12);
-const nextZonePct = $derived(spreadState.kind === 'cover' ? 50 : 12);
+// Cover: whole right page clickable. TOC: whole left page clickable.
+// Entry: no click zones — keyboard (arrow keys) and swipe only.
+const prevZonePct = $derived(spreadIndex === 1 ? 50 : 0);
+const nextZonePct = $derived(spreadIndex === 0 ? 50 : 0);
 const entryDate = $derived(spreadState.kind === 'entry' ? spreadState.date : null);
 const entryDates = $derived(new Set(entryDatePreviews.map((e) => e.entry_date)));
 
@@ -372,11 +372,11 @@ $effect(() => {
 					{:else if spreadState.kind === 'toc'}
 						<ExLibrisPage username={username} />
 					{:else if spreadState.kind === 'entry'}
-						<div class="h-full flex flex-col px-10 py-8 font-serif">
+						<div class="h-full flex flex-col px-8 pt-5 pb-4 font-serif">
 							<button
 								type="button"
 								onclick={() => { showCalendar = true; }}
-								class="text-xs text-stone-400 mb-4 tracking-wide uppercase hover:text-ornament-gold transition-colors text-left"
+								class="text-xs text-stone-400 mb-3 tracking-wide uppercase hover:text-ornament-gold transition-colors text-left shrink-0"
 								aria-label="Open calendar"
 							>
 								{($page.data as any).displayDate ?? ''}
@@ -389,7 +389,7 @@ $effect(() => {
 								placeholder="Begin writing…"
 							></textarea>
 							{#if saved}
-								<span class="text-xs text-stone-400 italic mt-2">Saved</span>
+								<span class="text-xs text-stone-400 italic mt-1 shrink-0">Saved</span>
 							{/if}
 						</div>
 					{/if}
@@ -398,7 +398,7 @@ $effect(() => {
 					{#if spreadState.kind === 'entry'}
 						{@const rightStart = splitPoints[entryPageSpread * 2]}
 						{#if rightStart !== undefined}
-							<div class="absolute inset-0 overflow-hidden px-10 py-8 font-serif text-sm leading-relaxed text-ink-900">
+							<div class="absolute inset-0 overflow-hidden px-8 pt-5 pb-4 font-serif text-sm leading-relaxed text-ink-900">
 								<p class="whitespace-pre-wrap m-0">{content.slice(rightStart)}</p>
 								{#if hasMoreContent}
 									<div class="absolute bottom-2 right-3 text-xs text-stone-400 italic pointer-events-none">→ continued</div>

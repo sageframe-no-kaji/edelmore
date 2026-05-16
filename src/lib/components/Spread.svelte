@@ -8,12 +8,11 @@ type Props = {
   canFlipNext?: boolean;
   spreadIndex?: number;
   spreadCount?: number;
+  // Kept for API compatibility; unused until animation is re-added.
   flipDuration?: number;
-  // Incrementing flipTrigger programmatically fires a flip in flipTriggerDir.
   flipTrigger?: number;
   flipTriggerDir?: 'next' | 'prev';
-  // Zone widths as % of spread width. Cover state passes nextZonePct=50 so the
-  // whole right page is a click target; entry state keeps them narrow.
+  // 0 = no zone rendered. Cover passes 50 so the whole right page is clickable.
   prevZonePct?: number;
   nextZonePct?: number;
   leftPage?: Snippet;
@@ -27,98 +26,27 @@ const {
   canFlipNext = true,
   spreadIndex = 0,
   spreadCount = 0,
-  flipDuration = 500,
   flipTrigger = 0,
   flipTriggerDir = 'next',
-  prevZonePct = 12,
-  nextZonePct = 12,
+  prevZonePct = 0,
+  nextZonePct = 0,
   leftPage,
   rightPage,
 }: Props = $props();
 
 const MAX_STACK = 12;
-
-let flipping = $state<'prev' | 'next' | null>(null);
-// biome-ignore lint/style/useConst: bind:this requires let
-let leafEl = $state<HTMLDivElement | null>(null);
-
 const leftLayers = $derived(Math.min(spreadIndex, MAX_STACK));
 const rightLayers = $derived(Math.min(Math.max(spreadCount - spreadIndex - 1, 0), MAX_STACK));
 
-/* v8 ignore next 30 */
-function triggerFlipNext() {
-  if (flipping || !canFlipNext) return;
-  if (!leafEl) return;
-  flipping = 'next';
-  // Clear any previous transition before setting initial state, then force a
-  // reflow so the browser commits the initial position before we animate.
-  leafEl.style.transition = 'none';
-  leafEl.style.display = 'block';
-  leafEl.style.transformOrigin = 'left center';
-  leafEl.style.right = '0';
-  leafEl.style.left = 'auto';
-  leafEl.style.transform = 'perspective(1200px) rotateY(0deg)';
-  void leafEl.offsetHeight; // force reflow
-  requestAnimationFrame(() => {
-    if (!leafEl) return;
-    leafEl.style.transition = `transform ${flipDuration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
-    leafEl.style.transform = 'perspective(1200px) rotateY(-180deg)';
-    const finish = () => {
-      if (leafEl) leafEl.style.display = 'none';
-      flipping = null;
-      onFlipNext();
-    };
-    const fallback = setTimeout(finish, flipDuration + 100);
-    leafEl.addEventListener(
-      'transitionend',
-      () => {
-        clearTimeout(fallback);
-        finish();
-      },
-      { once: true }
-    );
-  });
-}
-
-/* v8 ignore next 30 */
-function triggerFlipPrev() {
-  if (flipping || !canFlipPrev) return;
-  if (!leafEl) return;
-  flipping = 'prev';
-  leafEl.style.transition = 'none';
-  leafEl.style.display = 'block';
-  leafEl.style.transformOrigin = 'right center';
-  leafEl.style.left = '0';
-  leafEl.style.right = 'auto';
-  leafEl.style.transform = 'perspective(1200px) rotateY(0deg)';
-  void leafEl.offsetHeight; // force reflow
-  requestAnimationFrame(() => {
-    if (!leafEl) return;
-    leafEl.style.transition = `transform ${flipDuration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
-    leafEl.style.transform = 'perspective(1200px) rotateY(180deg)';
-    const finish = () => {
-      if (leafEl) leafEl.style.display = 'none';
-      flipping = null;
-      onFlipPrev();
-    };
-    const fallback = setTimeout(finish, flipDuration + 100);
-    leafEl.addEventListener(
-      'transitionend',
-      () => {
-        clearTimeout(fallback);
-        finish();
-      },
-      { once: true }
-    );
-  });
-}
-
+/* v8 ignore next 6 */
 $effect(() => {
   void flipTrigger;
-  /* v8 ignore next 4 */
   if (!flipTrigger) return;
-  if (flipTriggerDir === 'next') triggerFlipNext();
-  else triggerFlipPrev();
+  if (flipTriggerDir === 'next') {
+    if (canFlipNext) onFlipNext();
+  } else {
+    if (canFlipPrev) onFlipPrev();
+  }
 });
 </script>
 
@@ -151,34 +79,28 @@ $effect(() => {
 			{#if rightPage}{@render rightPage()}{/if}
 		</div>
 
-		<!-- Animating leaf (hidden at rest) -->
-		<div
-			class="leaf"
-			bind:this={leafEl}
-			style="display: none; transform-style: preserve-3d;"
-		>
-			<div class="leaf-face leaf-front"></div>
-			<div class="leaf-face leaf-back"></div>
-		</div>
+		<!-- Click zones — only rendered when width > 0 -->
+		{#if prevZonePct > 0}
+			<button
+				type="button"
+				class="flip-zone flip-zone-prev"
+				style="width: {prevZonePct}%"
+				aria-label="Previous page"
+				disabled={!canFlipPrev}
+				onclick={onFlipPrev}
+			></button>
+		{/if}
 
-		<!-- Click zones -->
-		<button
-			type="button"
-			class="flip-zone flip-zone-prev"
-			style="width: {prevZonePct}%"
-			aria-label="Previous page"
-			disabled={!canFlipPrev}
-			onclick={triggerFlipPrev}
-		></button>
-
-		<button
-			type="button"
-			class="flip-zone flip-zone-next"
-			style="width: {nextZonePct}%"
-			aria-label="Next page"
-			disabled={!canFlipNext}
-			onclick={triggerFlipNext}
-		></button>
+		{#if nextZonePct > 0}
+			<button
+				type="button"
+				class="flip-zone flip-zone-next"
+				style="width: {nextZonePct}%"
+				aria-label="Next page"
+				disabled={!canFlipNext}
+				onclick={onFlipNext}
+			></button>
+		{/if}
 	</div>
 </div>
 
@@ -187,7 +109,6 @@ $effect(() => {
 		position: relative;
 		width: 100%;
 		height: 100%;
-		perspective: 1000px;
 	}
 
 	.spread {
@@ -204,8 +125,7 @@ $effect(() => {
 		background: #f5e9cf;
 	}
 
-	.page::before,
-	.leaf-face::before {
+	.page::before {
 		content: '';
 		position: absolute;
 		inset: 0;
@@ -241,32 +161,6 @@ $effect(() => {
 		height: 100%;
 		background: #f5ead0;
 		box-shadow: -1px 0 2px rgba(0, 0, 0, 0.08);
-	}
-
-	/* Animating leaf */
-	.leaf {
-		position: absolute;
-		top: 0;
-		width: 50%;
-		height: 100%;
-		transform-style: preserve-3d;
-		z-index: 5;
-	}
-
-	.leaf-face {
-		position: absolute;
-		inset: 0;
-		backface-visibility: hidden;
-		background: #f5e9cf;
-	}
-
-	.leaf-front {
-		box-shadow: inset -8px 0 20px rgba(0, 0, 0, 0.08);
-	}
-
-	.leaf-back {
-		transform: rotateY(180deg);
-		box-shadow: inset 8px 0 20px rgba(0, 0, 0, 0.08);
 	}
 
 	/* Click zones */
