@@ -52,13 +52,13 @@ function triggerFlipNext() {
   flipping = 'next';
   leafEl.style.display = 'block';
   leafEl.style.transformOrigin = 'left center';
-  leafEl.style.transform = 'rotateY(0deg)';
+  leafEl.style.transform = 'perspective(1200px) rotateY(0deg)';
   leafEl.style.right = '0';
   leafEl.style.left = 'auto';
   requestAnimationFrame(() => {
     if (!leafEl) return;
     leafEl.style.transition = `transform ${flipDuration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
-    leafEl.style.transform = 'rotateY(-180deg)';
+    leafEl.style.transform = 'perspective(1200px) rotateY(-180deg)';
     leafEl.addEventListener(
       'transitionend',
       () => {
@@ -78,13 +78,13 @@ function triggerFlipPrev() {
   flipping = 'prev';
   leafEl.style.display = 'block';
   leafEl.style.transformOrigin = 'right center';
-  leafEl.style.transform = 'rotateY(0deg)';
+  leafEl.style.transform = 'perspective(1200px) rotateY(0deg)';
   leafEl.style.left = '0';
   leafEl.style.right = 'auto';
   requestAnimationFrame(() => {
     if (!leafEl) return;
     leafEl.style.transition = `transform ${flipDuration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
-    leafEl.style.transform = 'rotateY(180deg)';
+    leafEl.style.transform = 'perspective(1200px) rotateY(180deg)';
     leafEl.addEventListener(
       'transitionend',
       () => {
@@ -179,7 +179,6 @@ $effect(() => {
 		width: 100%;
 		height: 100%;
 		display: flex;
-		transform-style: preserve-3d;
 	}
 
 	.page {

@@ -398,7 +398,7 @@ $effect(() => {
 					{#if spreadState.kind === 'entry'}
 						{@const rightStart = splitPoints[entryPageSpread * 2]}
 						{#if rightStart !== undefined}
-							<div class="relative h-full overflow-hidden px-10 py-8 font-serif text-sm leading-relaxed text-ink-900">
+							<div class="absolute inset-0 overflow-hidden px-10 py-8 font-serif text-sm leading-relaxed text-ink-900">
 								<p class="whitespace-pre-wrap m-0">{content.slice(rightStart)}</p>
 								{#if hasMoreContent}
 									<div class="absolute bottom-2 right-3 text-xs text-stone-400 italic pointer-events-none">→ continued</div>
