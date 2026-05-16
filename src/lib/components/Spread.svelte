@@ -45,52 +45,68 @@ let leafEl = $state<HTMLDivElement | null>(null);
 const leftLayers = $derived(Math.min(spreadIndex, MAX_STACK));
 const rightLayers = $derived(Math.min(Math.max(spreadCount - spreadIndex - 1, 0), MAX_STACK));
 
-/* v8 ignore next 26 */
+/* v8 ignore next 30 */
 function triggerFlipNext() {
   if (flipping || !canFlipNext) return;
   if (!leafEl) return;
   flipping = 'next';
+  // Clear any previous transition before setting initial state, then force a
+  // reflow so the browser commits the initial position before we animate.
+  leafEl.style.transition = 'none';
   leafEl.style.display = 'block';
   leafEl.style.transformOrigin = 'left center';
-  leafEl.style.transform = 'perspective(1200px) rotateY(0deg)';
   leafEl.style.right = '0';
   leafEl.style.left = 'auto';
+  leafEl.style.transform = 'perspective(1200px) rotateY(0deg)';
+  void leafEl.offsetHeight; // force reflow
   requestAnimationFrame(() => {
     if (!leafEl) return;
     leafEl.style.transition = `transform ${flipDuration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
     leafEl.style.transform = 'perspective(1200px) rotateY(-180deg)';
+    const finish = () => {
+      if (leafEl) leafEl.style.display = 'none';
+      flipping = null;
+      onFlipNext();
+    };
+    const fallback = setTimeout(finish, flipDuration + 100);
     leafEl.addEventListener(
       'transitionend',
       () => {
-        if (leafEl) leafEl.style.display = 'none';
-        flipping = null;
-        onFlipNext();
+        clearTimeout(fallback);
+        finish();
       },
       { once: true }
     );
   });
 }
 
-/* v8 ignore next 26 */
+/* v8 ignore next 30 */
 function triggerFlipPrev() {
   if (flipping || !canFlipPrev) return;
   if (!leafEl) return;
   flipping = 'prev';
+  leafEl.style.transition = 'none';
   leafEl.style.display = 'block';
   leafEl.style.transformOrigin = 'right center';
-  leafEl.style.transform = 'perspective(1200px) rotateY(0deg)';
   leafEl.style.left = '0';
   leafEl.style.right = 'auto';
+  leafEl.style.transform = 'perspective(1200px) rotateY(0deg)';
+  void leafEl.offsetHeight; // force reflow
   requestAnimationFrame(() => {
     if (!leafEl) return;
     leafEl.style.transition = `transform ${flipDuration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
     leafEl.style.transform = 'perspective(1200px) rotateY(180deg)';
+    const finish = () => {
+      if (leafEl) leafEl.style.display = 'none';
+      flipping = null;
+      onFlipPrev();
+    };
+    const fallback = setTimeout(finish, flipDuration + 100);
     leafEl.addEventListener(
       'transitionend',
       () => {
-        if (leafEl) leafEl.style.display = 'none';
-        flipping = null;
-        onFlipPrev();
+        clearTimeout(fallback);
+        finish();
       },
       { once: true }
     );
