@@ -340,11 +340,13 @@ $effect(() => {
 				{#snippet rightPage()}
 					{#if spreadState.kind === 'entry'}
 						{@const rightStart = splitPoints[entryPageSpread * 2]}
+						{@const rightEnd = splitPoints[entryPageSpread * 2 + 1]}
 						{#if rightStart !== undefined}
 							<textarea
-								value={content.slice(rightStart)}
+								value={content.slice(rightStart, rightEnd)}
 								oninput={(e) => {
-									content = content.slice(0, rightStart) + e.currentTarget.value;
+									const suffix = rightEnd !== undefined ? content.slice(rightEnd) : '';
+									content = content.slice(0, rightStart) + e.currentTarget.value + suffix;
 								}}
 								class="absolute inset-0 w-full h-full resize-none overflow-hidden px-8 pt-5 pb-8 bg-transparent text-ink-900 font-serif text-sm leading-relaxed outline-none"
 							></textarea>
