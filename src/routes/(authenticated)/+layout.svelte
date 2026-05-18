@@ -10,7 +10,7 @@ import { findCover } from '$lib/covers.js';
 import type { EntryDatePreview } from '$lib/db.js';
 import { findSplitIndex, snapToWordBreak } from '$lib/overflow.js';
 import type { Snippet } from 'svelte';
-import { onMount, untrack } from 'svelte';
+import { onMount, tick, untrack } from 'svelte';
 
 type SpreadState = { kind: 'cover' } | { kind: 'toc' } | { kind: 'entry'; date: string };
 
@@ -159,7 +159,10 @@ let splitPoints: number[] = $state([]);
 let entryPageSpread = $state(0);
 // biome-ignore lint/style/useConst: bind:this requires let
 let textareaEl: HTMLTextAreaElement | null = $state(null);
+// biome-ignore lint/style/useConst: bind:this requires let
+let rightTextareaEl: HTMLTextAreaElement | null = $state(null);
 let measureEl: HTMLTextAreaElement | null = null;
+let pendingCursorRestore: { absPos: number; side: 'left' | 'right' } | null = null;
 
 const entrySpreadCount = $derived(Math.floor(splitPoints.length / 2) + 1);
 const hasMoreContent = $derived(entryPageSpread < entrySpreadCount - 1);
@@ -201,7 +204,7 @@ $effect(() => {
 
 $effect(() => {
   const c = content;
-  /* v8 ignore next 46 */
+  /* v8 ignore next 28 */
   const timer = setTimeout(() => {
     if (!textareaEl || !measureEl || spreadState.kind !== 'entry') return;
     const style = getComputedStyle(textareaEl);
@@ -237,6 +240,36 @@ $effect(() => {
     if (entryPageSpread >= newSpreadCount) entryPageSpread = newSpreadCount - 1;
   }, 50);
   return () => clearTimeout(timer);
+});
+
+// Push new slices into the uncontrolled textareas when split boundaries change.
+// Does NOT track `content` directly — avoids firing on every keystroke.
+$effect(() => {
+  const sp = splitPoints;
+  const spread = entryPageSpread;
+  const restore = pendingCursorRestore;
+  pendingCursorRestore = null;
+  const c = untrack(() => content);
+  tick().then(() => {
+    if (textareaEl) {
+      const ls = spread === 0 ? 0 : (sp[spread * 2 - 1] ?? 0);
+      const le = sp[spread * 2];
+      textareaEl.value = c.slice(ls, le);
+      if (restore?.side === 'left') {
+        const localPos = Math.max(0, Math.min(restore.absPos - ls, textareaEl.value.length));
+        textareaEl.setSelectionRange(localPos, localPos);
+      }
+    }
+    if (rightTextareaEl) {
+      const rs = sp[spread * 2];
+      const re = sp[spread * 2 + 1];
+      rightTextareaEl.value = c.slice(rs, re);
+      if (restore?.side === 'right') {
+        const localPos = Math.max(0, Math.min(restore.absPos - rs, rightTextareaEl.value.length));
+        rightTextareaEl.setSelectionRange(localPos, localPos);
+      }
+    }
+  });
 });
 </script>
 
@@ -282,8 +315,8 @@ $effect(() => {
 							>{($page.data as any).displayDate ?? ''}</button>
 							<textarea
 								bind:this={textareaEl}
-								value={content.slice(leftStart, leftEnd)}
 								oninput={(e) => {
+									pendingCursorRestore = { absPos: leftStart + e.currentTarget.selectionStart, side: 'left' };
 									const suffix = leftEnd !== undefined ? content.slice(leftEnd) : '';
 									content = content.slice(0, leftStart) + e.currentTarget.value + suffix;
 								}}
@@ -308,8 +341,9 @@ $effect(() => {
 						{@const rightEnd = splitPoints[entryPageSpread * 2 + 1]}
 						{#if rightStart !== undefined}
 							<textarea
-								value={content.slice(rightStart, rightEnd)}
+								bind:this={rightTextareaEl}
 								oninput={(e) => {
+									pendingCursorRestore = { absPos: rightStart + e.currentTarget.selectionStart, side: 'right' };
 									const suffix = rightEnd !== undefined ? content.slice(rightEnd) : '';
 									content = content.slice(0, rightStart) + e.currentTarget.value + suffix;
 								}}
