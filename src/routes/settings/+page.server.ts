@@ -1,20 +1,60 @@
 import { hashPin } from '$lib/auth.js';
-import { updateDiaryTitle, updateFontSize, updatePinHash, updateUsername } from '$lib/db.js';
+import {
+  updateDiaryTitle,
+  updateFontSize,
+  updateJournalFont,
+  updatePinHash,
+  updateUsername,
+} from '$lib/db.js';
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 
 const FONT_SIZE_STEPS = [2.4, 2.8, 3.2, 3.6, 4.0, 4.4];
+const JOURNAL_FONTS = ['eb-garamond', 'cedarville-cursive'] as const;
 
 export const load: PageServerLoad = async ({ locals }) => {
   if (!locals.user) redirect(302, '/login');
   return {
     username: locals.user.username,
     font_size: locals.user.font_size,
+    journal_font: locals.user.journal_font,
     diary_title: locals.user.diary_title,
   };
 };
 
 export const actions: Actions = {
+  saveSettings: async ({ request, locals }) => {
+    if (!locals.user) redirect(302, '/login');
+    const data = await request.formData();
+
+    const username = data.get('username')?.toString().trim() ?? '';
+    const diaryTitle = data.get('diary_title')?.toString().trim() ?? '';
+    const fontSize = Number(data.get('font_size'));
+    const journalFont = data.get('journal_font')?.toString() ?? '';
+    const pin = data.get('pin')?.toString() ?? '';
+    const confirm = data.get('confirm')?.toString() ?? '';
+
+    if (!username) return fail(400, { error: 'Name cannot be empty' });
+    if (!diaryTitle) return fail(400, { error: 'Title cannot be empty' });
+    if (diaryTitle.length > 40) return fail(400, { error: 'Title too long (max 40 chars)' });
+    if (!FONT_SIZE_STEPS.includes(fontSize)) return fail(400, { error: 'Invalid font size' });
+    if (!JOURNAL_FONTS.includes(journalFont as (typeof JOURNAL_FONTS)[number])) {
+      return fail(400, { error: 'Invalid journal font' });
+    }
+    if (pin.length > 0 || confirm.length > 0) {
+      if (!/^\d{4}$/.test(pin)) return fail(400, { error: 'PIN must be exactly 4 digits' });
+      if (pin !== confirm) return fail(400, { error: 'PINs do not match' });
+      const hash = await hashPin(pin);
+      updatePinHash(locals.db, locals.user.id, hash);
+    }
+
+    updateUsername(locals.db, locals.user.id, username);
+    updateDiaryTitle(locals.db, locals.user.id, diaryTitle);
+    updateFontSize(locals.db, locals.user.id, fontSize);
+    updateJournalFont(locals.db, locals.user.id, journalFont);
+    return { success: true };
+  },
+
   updateName: async ({ request, locals }) => {
     if (!locals.user) redirect(302, '/login');
     const data = await request.formData();

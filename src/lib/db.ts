@@ -9,6 +9,7 @@ export type User = {
   pin_hash: string;
   cover_id: string;
   font_size: number;
+  journal_font: string;
   diary_title: string;
   created_at: string;
 };
@@ -41,6 +42,7 @@ export function applySchema(db: Database): void {
       pin_hash    TEXT NOT NULL,
       cover_id    TEXT NOT NULL DEFAULT 'meadow',
       font_size   REAL NOT NULL DEFAULT 3.4,
+      journal_font TEXT NOT NULL DEFAULT 'eb-garamond',
       diary_title TEXT NOT NULL DEFAULT 'D I A R Y',
       created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
@@ -64,6 +66,7 @@ export function applySchema(db: Database): void {
   // Idempotent migrations for columns added after initial release.
   for (const sql of [
     'ALTER TABLE users ADD COLUMN font_size REAL NOT NULL DEFAULT 3.4',
+    "ALTER TABLE users ADD COLUMN journal_font TEXT NOT NULL DEFAULT 'eb-garamond'",
     `ALTER TABLE users ADD COLUMN diary_title TEXT NOT NULL DEFAULT 'D I A R Y'`,
   ]) {
     try {
@@ -82,12 +85,28 @@ export function getUserById(
   db: Database,
   id: number
 ):
-  | { id: number; username: string; cover_id: string; font_size: number; diary_title: string }
+  | {
+      id: number;
+      username: string;
+      cover_id: string;
+      font_size: number;
+      journal_font: string;
+      diary_title: string;
+    }
   | undefined {
   return db
-    .prepare('SELECT id, username, cover_id, font_size, diary_title FROM users WHERE id = ?')
+    .prepare(
+      'SELECT id, username, cover_id, font_size, journal_font, diary_title FROM users WHERE id = ?'
+    )
     .get(id) as
-    | { id: number; username: string; cover_id: string; font_size: number; diary_title: string }
+    | {
+        id: number;
+        username: string;
+        cover_id: string;
+        font_size: number;
+        journal_font: string;
+        diary_title: string;
+      }
     | undefined;
 }
 
@@ -184,6 +203,10 @@ export function updatePinHash(db: Database, userId: number, hash: string): void 
 
 export function updateFontSize(db: Database, userId: number, size: number): void {
   db.prepare('UPDATE users SET font_size = ? WHERE id = ?').run(size, userId);
+}
+
+export function updateJournalFont(db: Database, userId: number, font: string): void {
+  db.prepare('UPDATE users SET journal_font = ? WHERE id = ?').run(font, userId);
 }
 
 export function updateDiaryTitle(db: Database, userId: number, title: string): void {

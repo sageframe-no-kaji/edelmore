@@ -15,6 +15,7 @@ import {
   listEntryDatesWithPreview,
   listUsers,
   makeEntryPreview,
+  updateJournalFont,
   updateSessionExpiry,
   updateUserCoverId,
   upsertEntry,
@@ -99,6 +100,13 @@ describe('user operations', () => {
     updateUserCoverId(db, id, 'sage');
     const user = getUserById(db, id);
     expect(user?.cover_id).toBe('sage');
+  });
+
+  it('updateJournalFont updates the journal_font for the given user', () => {
+    const id = createUser(db, 'Iona', 'hash1');
+    updateJournalFont(db, id, 'cedarville-cursive');
+    const user = getUserById(db, id);
+    expect(user?.journal_font).toBe('cedarville-cursive');
   });
 
   it('updateUserCoverId does not affect other users', () => {

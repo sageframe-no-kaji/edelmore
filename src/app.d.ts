@@ -9,6 +9,7 @@ declare global {
         username: string;
         cover_id: string;
         font_size: number;
+        journal_font: string;
         diary_title: string;
       };
     }

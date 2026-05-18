@@ -17,6 +17,7 @@ const defaultUser = (userId: number) => ({
   username: 'Iona',
   cover_id: 'meadow',
   font_size: 3.4,
+  journal_font: 'eb-garamond',
   diary_title: 'D I A R Y',
 });
 
@@ -39,14 +40,55 @@ describe('load', () => {
     expect((threw as { status?: number })?.status).toBe(302);
   });
 
-  it('returns username, font_size, and diary_title', async () => {
+  it('returns username, font_size, journal_font, and diary_title', async () => {
     const result = (await load({
       locals: { db, user: defaultUser(userId) },
-    } as any)) as { username: string; font_size: number; diary_title: string };
+    } as any)) as {
+      username: string;
+      font_size: number;
+      journal_font: string;
+      diary_title: string;
+    };
 
     expect(result.username).toBe('Iona');
     expect(result.font_size).toBe(3.4);
+    expect(result.journal_font).toBe('eb-garamond');
     expect(result.diary_title).toBe('D I A R Y');
+  });
+});
+
+describe('actions.saveSettings', () => {
+  let db: Database;
+  let userId: number;
+
+  beforeEach(() => {
+    db = freshDb();
+    userId = createUser(db, 'Iona', 'hash');
+  });
+
+  it('updates all settings in one submission', async () => {
+    const result = await actions.saveSettings({
+      request: {
+        formData: async () =>
+          makeFormData({
+            username: 'Nova',
+            diary_title: 'Moon Notes',
+            font_size: '4.4',
+            journal_font: 'cedarville-cursive',
+            pin: '',
+            confirm: '',
+          }),
+      },
+      locals: { db, user: defaultUser(userId) },
+    } as any);
+
+    expect(result?.success).toBe(true);
+    expect(getUserById(db, userId)).toMatchObject({
+      username: 'Nova',
+      diary_title: 'Moon Notes',
+      font_size: 4.4,
+      journal_font: 'cedarville-cursive',
+    });
   });
 });
 
