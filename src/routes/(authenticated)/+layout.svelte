@@ -1,4 +1,5 @@
 <script lang="ts">
+import { enhance } from '$app/forms';
 import { goto } from '$app/navigation';
 import { page } from '$app/stores';
 import CalendarModal from '$lib/components/CalendarModal.svelte';
@@ -12,7 +13,11 @@ import { findSplitIndex, snapToWordBreak } from '$lib/overflow.js';
 import type { Snippet } from 'svelte';
 import { onMount, tick, untrack } from 'svelte';
 
-type SpreadState = { kind: 'cover' } | { kind: 'toc' } | { kind: 'entry'; date: string };
+type SpreadState =
+  | { kind: 'cover' }
+  | { kind: 'toc' }
+  | { kind: 'entry'; date: string }
+  | { kind: 'settings' };
 
 const { children }: { children: Snippet } = $props();
 
@@ -128,10 +133,24 @@ function onFlipPrev() {
   }
 }
 
-const canFlipPrev = $derived(spreadState.kind !== 'cover');
+function openSettings() {
+  prevSpreadState = spreadState;
+  spreadState = { kind: 'settings' };
+}
+
+function closeSettings() {
+  spreadState = prevSpreadState ?? { kind: 'cover' };
+  prevSpreadState = null;
+}
+
+function computeCanFlipPrev(): boolean {
+  return spreadState.kind !== 'cover' && spreadState.kind !== 'settings';
+}
+const canFlipPrev = $derived(computeCanFlipPrev());
 function computeCanFlipNext(): boolean {
   if (spreadState.kind === 'cover') return true;
   if (spreadState.kind === 'toc') return entryDatePreviews.length > 0;
+  if (spreadState.kind === 'settings') return false;
   return entryPageSpread < entrySpreadCount - 1 || nextDate !== null;
 }
 const canFlipNext = $derived(computeCanFlipNext());
@@ -139,6 +158,7 @@ const canFlipNext = $derived(computeCanFlipNext());
 function getSpreadIndex(): number {
   if (spreadState.kind === 'cover') return 0;
   if (spreadState.kind === 'toc') return 1;
+  if (spreadState.kind === 'settings') return Math.max(spreadCount - 1, 2);
   const idx = entryDatePreviews.findIndex(
     (e) =>
       spreadState.kind === 'entry' &&
@@ -151,11 +171,29 @@ const spreadCount = $derived(entryDatePreviews.length + 2);
 // Cover: whole right page (front cover) is the click target to open.
 // TOC: whole left page (Ex Libris) clicks back to cover; narrow right margin clicks forward.
 // Entry: narrow margin strips on both sides; text area in between is unobstructed.
-const prevZonePct = $derived(spreadIndex === 0 ? 0 : spreadIndex === 1 ? 50 : 5);
-const nextZonePct = $derived(spreadIndex === 0 ? 0 : 5);
+function computePrevZonePct(): number {
+  if (spreadState.kind === 'settings') return 0;
+  if (spreadIndex === 0) return 0;
+  if (spreadIndex === 1) return 50;
+  return 5;
+}
+const prevZonePct = $derived(computePrevZonePct());
+function computeNextZonePct(): number {
+  if (spreadState.kind === 'settings') return 0;
+  if (spreadIndex === 0) return 0;
+  return 5;
+}
+const nextZonePct = $derived(computeNextZonePct());
 const flipOverhangRem = $derived(spreadIndex === 0 ? 0 : 4);
 const entryDate = $derived(spreadState.kind === 'entry' ? spreadState.date : null);
 const entryDates = $derived(new Set(entryDatePreviews.map((e) => e.entry_date)));
+
+// Settings overlay
+let prevSpreadState: SpreadState | null = $state(null);
+const FONT_STEPS = [2.4, 2.8, 3.2, 3.6, 4.0, 4.4];
+const fontSizeIdx = $derived(FONT_STEPS.indexOf(fontSizeCqw));
+const prevFontSizeStep = $derived(FONT_STEPS[fontSizeIdx - 1] ?? null);
+const nextFontSizeStep = $derived(FONT_STEPS[fontSizeIdx + 1] ?? null);
 
 // biome-ignore lint/style/useConst: $state requires let for mutation
 let showCalendar = $state(false);
@@ -310,6 +348,48 @@ $effect(() => {
 						<!-- blank — front cover is the only thing visible on this spread -->
 					{:else if spreadState.kind === 'toc'}
 						<ExLibrisPage username={username} />
+					{:else if spreadState.kind === 'settings'}
+						<div class="absolute inset-0 px-8 pt-10 pb-8 overflow-hidden font-serif">
+							<button
+								type="button"
+								onclick={closeSettings}
+								class="text-xs tracking-widest uppercase text-stone-400 hover:text-stone-600 transition-colors"
+							>← Back</button>
+
+							<div class="mt-10">
+								<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-3">Display Name</p>
+								<form method="POST" action="/settings?/updateName" use:enhance>
+									<div class="flex items-end gap-4">
+										<input
+											type="text"
+											name="username"
+											value={username}
+											maxlength="40"
+											required
+											class="flex-1 bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors"
+										/>
+										<button type="submit" class="text-xs tracking-widest uppercase text-stone-400 hover:text-stone-600 transition-colors pb-1">Save</button>
+									</div>
+								</form>
+							</div>
+
+							<div class="mt-10">
+								<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-3">Diary Title</p>
+								<form method="POST" action="/settings?/updateDiaryTitle" use:enhance>
+									<div class="flex items-end gap-4">
+										<input
+											type="text"
+											name="diary_title"
+											value={diaryTitle}
+											maxlength="40"
+											required
+											class="flex-1 bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors"
+										/>
+										<button type="submit" class="text-xs tracking-widest uppercase text-stone-400 hover:text-stone-600 transition-colors pb-1">Save</button>
+									</div>
+								</form>
+							</div>
+						</div>
 					{:else if spreadState.kind === 'entry'}
 						{@const leftStart = entryPageSpread === 0 ? 0 : (splitPoints[entryPageSpread * 2 - 1] ?? 0)}
 						{@const leftEnd = splitPoints[entryPageSpread * 2]}
@@ -338,7 +418,74 @@ $effect(() => {
 					{/if}
 				{/snippet}
 				{#snippet rightPage()}
-					{#if spreadState.kind === 'entry'}
+					<!-- edelweiss settings shortcut — entry and toc only -->
+					{#if spreadState.kind === 'entry' || spreadState.kind === 'toc'}
+						<button
+							type="button"
+							onclick={openSettings}
+							class="absolute top-4 right-5 z-20 opacity-25 hover:opacity-75 transition-opacity"
+							aria-label="Settings"
+						><img src="/edelweiss.svg" style="width: 1.6rem; height: auto" alt="" /></button>
+					{/if}
+
+					{#if spreadState.kind === 'settings'}
+						<div class="absolute inset-0 px-8 pt-10 pb-8 overflow-hidden font-serif">
+							<div class="mt-4">
+								<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-3">Text Size</p>
+								<div class="flex items-center gap-5">
+									<form method="POST" action="/settings?/updateFontSize" use:enhance>
+										<input type="hidden" name="font_size" value={prevFontSizeStep ?? fontSizeCqw} />
+										<button
+											type="submit"
+											disabled={prevFontSizeStep === null}
+											class="w-7 h-7 border border-stone-300 text-stone-500 text-lg leading-none hover:border-stone-500 transition-colors disabled:opacity-20 flex items-center justify-center"
+										>−</button>
+									</form>
+									<span class="text-stone-500 text-sm">{fontSizeIdx + 1} / {FONT_STEPS.length}</span>
+									<form method="POST" action="/settings?/updateFontSize" use:enhance>
+										<input type="hidden" name="font_size" value={nextFontSizeStep ?? fontSizeCqw} />
+										<button
+											type="submit"
+											disabled={nextFontSizeStep === null}
+											class="w-7 h-7 border border-stone-300 text-stone-500 text-lg leading-none hover:border-stone-500 transition-colors disabled:opacity-20 flex items-center justify-center"
+										>+</button>
+									</form>
+								</div>
+							</div>
+
+							<div class="mt-10">
+								<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-1">Change PIN</p>
+								<p class="text-[0.6rem] italic text-stone-400 mb-3">4 digits — no current PIN required</p>
+								<form method="POST" action="/settings?/updatePin" use:enhance>
+									<div class="flex items-end gap-3 flex-wrap">
+										<input
+											type="password"
+											name="pin"
+											inputmode="numeric"
+											pattern="\d{4}"
+											maxlength="4"
+											placeholder="New PIN"
+											required
+											class="bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors"
+											style="width: 5rem"
+										/>
+										<input
+											type="password"
+											name="confirm"
+											inputmode="numeric"
+											pattern="\d{4}"
+											maxlength="4"
+											placeholder="Confirm"
+											required
+											class="bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors"
+											style="width: 5rem"
+										/>
+										<button type="submit" class="text-xs tracking-widest uppercase text-stone-400 hover:text-stone-600 transition-colors pb-1">Set</button>
+									</div>
+								</form>
+							</div>
+						</div>
+					{:else if spreadState.kind === 'entry'}
 						<!-- TOC link — center top of right page, sits within the pt-12 top margin -->
 						<button
 							type="button"
@@ -396,12 +543,20 @@ $effect(() => {
 				<span class="text-xs text-stone-400 font-serif">
 					{($page.data as any).displayDate ?? ''}
 				</span>
-				<button
-					type="button"
-					onclick={onFlipNext}
-					disabled={!canFlipNext}
-					class="text-sm text-stone-500 disabled:opacity-30"
-				>Next →</button>
+				<div class="flex items-center gap-3">
+					<button
+						type="button"
+						onclick={openSettings}
+						class="opacity-30 hover:opacity-70 transition-opacity"
+						aria-label="Settings"
+					><img src="/edelweiss.svg" style="width: 1.25rem; height: auto" alt="" /></button>
+					<button
+						type="button"
+						onclick={onFlipNext}
+						disabled={!canFlipNext}
+						class="text-sm text-stone-500 disabled:opacity-30"
+					>Next →</button>
+				</div>
 			</div>
 			<div class="flex-1 flex flex-col p-4">
 				<textarea
@@ -414,10 +569,77 @@ $effect(() => {
 				{/if}
 			</div>
 		{:else if spreadState.kind === 'toc'}
-			<div class="flex items-center px-4 py-2 border-b border-stone-200">
+			<div class="flex items-center justify-between px-4 py-2 border-b border-stone-200">
 				<button type="button" onclick={onFlipPrev} class="text-sm text-stone-500">← Back</button>
+				<button
+					type="button"
+					onclick={openSettings}
+					class="opacity-30 hover:opacity-70 transition-opacity"
+					aria-label="Settings"
+				><img src="/edelweiss.svg" style="width: 1.25rem; height: auto" alt="" /></button>
 			</div>
 			<TocPage entries={entryDatePreviews} onNavigate={navigateTo} />
+		{:else if spreadState.kind === 'settings'}
+			<div class="flex-1 flex flex-col bg-[#fdf6e3] overflow-auto px-6 py-6 font-serif">
+				<button
+					type="button"
+					onclick={closeSettings}
+					class="text-xs tracking-widest uppercase text-stone-400 hover:text-stone-600 transition-colors self-start mb-8"
+				>← Back</button>
+
+				<div class="mb-8">
+					<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Display Name</p>
+					<form method="POST" action="/settings?/updateName" use:enhance>
+						<div class="flex items-end gap-3">
+							<input type="text" name="username" value={username} maxlength="40" required
+								class="flex-1 bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none" />
+							<button type="submit" class="text-xs tracking-widest uppercase text-stone-400 pb-1">Save</button>
+						</div>
+					</form>
+				</div>
+
+				<div class="mb-8">
+					<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Diary Title</p>
+					<form method="POST" action="/settings?/updateDiaryTitle" use:enhance>
+						<div class="flex items-end gap-3">
+							<input type="text" name="diary_title" value={diaryTitle} maxlength="40" required
+								class="flex-1 bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none" />
+							<button type="submit" class="text-xs tracking-widest uppercase text-stone-400 pb-1">Save</button>
+						</div>
+					</form>
+				</div>
+
+				<div class="mb-8">
+					<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-3">Text Size</p>
+					<div class="flex items-center gap-5">
+						<form method="POST" action="/settings?/updateFontSize" use:enhance>
+							<input type="hidden" name="font_size" value={prevFontSizeStep ?? fontSizeCqw} />
+							<button type="submit" disabled={prevFontSizeStep === null}
+								class="w-7 h-7 border border-stone-300 text-stone-500 text-lg disabled:opacity-20 flex items-center justify-center">−</button>
+						</form>
+						<span class="text-stone-500 text-sm">{fontSizeIdx + 1} / {FONT_STEPS.length}</span>
+						<form method="POST" action="/settings?/updateFontSize" use:enhance>
+							<input type="hidden" name="font_size" value={nextFontSizeStep ?? fontSizeCqw} />
+							<button type="submit" disabled={nextFontSizeStep === null}
+								class="w-7 h-7 border border-stone-300 text-stone-500 text-lg disabled:opacity-20 flex items-center justify-center">+</button>
+						</form>
+					</div>
+				</div>
+
+				<div class="mb-8">
+					<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-1">Change PIN</p>
+					<p class="text-[0.6rem] italic text-stone-400 mb-3">4 digits — no current PIN required</p>
+					<form method="POST" action="/settings?/updatePin" use:enhance>
+						<div class="flex items-end gap-3 flex-wrap">
+							<input type="password" name="pin" inputmode="numeric" pattern="\d{4}" maxlength="4" placeholder="New PIN" required
+								class="bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none" style="width:5rem" />
+							<input type="password" name="confirm" inputmode="numeric" pattern="\d{4}" maxlength="4" placeholder="Confirm" required
+								class="bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none" style="width:5rem" />
+							<button type="submit" class="text-xs tracking-widest uppercase text-stone-400 pb-1">Set</button>
+						</div>
+					</form>
+				</div>
+			</div>
 		{:else}
 			<div class="flex-1 flex flex-col bg-[#fdf6e3] overflow-hidden">
 				<CoverPage config={activeCover} {username} {diaryTitle} showSettings={true} />
