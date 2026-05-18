@@ -90,6 +90,28 @@ describe('actions.saveSettings', () => {
       journal_font: 'cedarville-cursive',
     });
   });
+
+  it('returns 400 when username is already in use', async () => {
+    createUser(db, 'Isla', 'hash2');
+
+    const result = await actions.saveSettings({
+      request: {
+        formData: async () =>
+          makeFormData({
+            username: 'Isla',
+            diary_title: 'Moon Notes',
+            font_size: '4.4',
+            journal_font: 'cedarville-cursive',
+            pin: '',
+            confirm: '',
+          }),
+      },
+      locals: { db, user: defaultUser(userId) },
+    } as any);
+
+    expect(result?.status).toBe(400);
+    expect(result?.data?.error).toBe('That display name is already in use.');
+  });
 });
 
 describe('actions.updateName', () => {

@@ -147,6 +147,7 @@ function openSettings() {
   prevSpreadState = spreadState;
   spreadState = { kind: 'settings' };
 	settingsWarning = false;
+	settingsWarningText = 'You have unsaved changes.';
 	settingsBackArmed = false;
 	draftUsername = username;
 	draftDiaryTitle = diaryTitle;
@@ -160,12 +161,14 @@ function closeSettings() {
 	if (settingsDirty && !settingsBackArmed) {
 		settingsWarning = true;
 		settingsBackArmed = true;
+		settingsWarningText = 'You have unsaved changes.';
 		return;
 	}
   spreadState = prevSpreadState ?? { kind: 'cover' };
   prevSpreadState = null;
 	settingsWarning = false;
 	settingsBackArmed = false;
+	settingsWarningText = 'You have unsaved changes.';
 }
 
 function computeCanFlipPrev(): boolean {
@@ -230,6 +233,7 @@ let draftJournalFont = $state(untrack(() => journalFont as JournalFont));
 let draftPin = $state('');
 let draftConfirm = $state('');
 let settingsWarning = $state(false);
+let settingsWarningText = $state('You have unsaved changes.');
 let settingsBackArmed = $state(false);
 let savingSettings = $state(false);
 
@@ -308,6 +312,7 @@ async function saveSettings() {
 	if (!settingsDirty || savingSettings) return;
 	settingsWarning = false;
 	settingsBackArmed = false;
+	settingsWarningText = 'You have unsaved changes.';
 	savingSettings = true;
 	const formData = new FormData();
 	formData.set('username', draftUsername);
@@ -322,7 +327,19 @@ async function saveSettings() {
 	});
 	savingSettings = false;
 	if (!response.ok) {
+		let errorMessage = 'You have unsaved changes.';
+		try {
+			const payload = await response.json();
+			if (typeof payload?.data?.error === 'string') {
+				errorMessage = payload.data.error;
+			} else if (typeof payload?.error === 'string') {
+				errorMessage = payload.error;
+			}
+		} catch {
+			// keep fallback
+		}
 		settingsWarning = true;
+		settingsWarningText = errorMessage;
 		settingsBackArmed = true;
 		return;
 	}
@@ -492,7 +509,7 @@ $effect(() => {
 						<div class="absolute inset-0 px-8 pt-10 pb-8 overflow-hidden font-serif">
 							<div class="flex h-full flex-col">
 								{#if settingsWarning}
-									<span class="settings-warning-text">You have unsaved changes.</span>
+									<span class="settings-warning-text">{settingsWarningText}</span>
 								{/if}
 
 								<div class="flex-1 space-y-7">
@@ -643,7 +660,7 @@ $effect(() => {
 		{:else if spreadState.kind === 'settings'}
 			<div class="flex-1 flex flex-col bg-[#fdf6e3] overflow-auto px-6 py-6 font-serif">
 				{#if settingsWarning}
-					<span class="settings-warning-text">You have unsaved changes.</span>
+					<span class="settings-warning-text">{settingsWarningText}</span>
 				{/if}
 
 				<div class="space-y-6">

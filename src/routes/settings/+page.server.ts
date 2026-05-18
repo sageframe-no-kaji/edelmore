@@ -48,10 +48,18 @@ export const actions: Actions = {
       updatePinHash(locals.db, locals.user.id, hash);
     }
 
-    updateUsername(locals.db, locals.user.id, username);
-    updateDiaryTitle(locals.db, locals.user.id, diaryTitle);
-    updateFontSize(locals.db, locals.user.id, fontSize);
-    updateJournalFont(locals.db, locals.user.id, journalFont);
+    try {
+      updateUsername(locals.db, locals.user.id, username);
+      updateDiaryTitle(locals.db, locals.user.id, diaryTitle);
+      updateFontSize(locals.db, locals.user.id, fontSize);
+      updateJournalFont(locals.db, locals.user.id, journalFont);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (message.includes('UNIQUE constraint failed: users.username')) {
+        return fail(400, { error: 'That display name is already in use.' });
+      }
+      return fail(400, { error: 'Could not save settings. Please try again.' });
+    }
     return { success: true };
   },
 
