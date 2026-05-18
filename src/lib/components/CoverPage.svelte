@@ -6,24 +6,45 @@ type Props = {
   username: string;
   diaryTitle?: string;
   showSettings?: boolean;
+  backCover?: boolean;
+  onOpenSettings?: () => void;
 };
 
-const { config, username, diaryTitle = 'D I A R Y', showSettings = false }: Props = $props();
+const {
+  config,
+  username,
+  diaryTitle = 'D I A R Y',
+  showSettings = false,
+  backCover = false,
+  onOpenSettings,
+}: Props = $props();
 </script>
 
 <div class="cover">
-  <img src="/cover.png" class="cover-photo" alt="" aria-hidden="true" />
+  <img src={backCover ? '/back.png' : '/cover.png'} class="cover-photo" alt="" aria-hidden="true" />
 
-  <div class="title-block">
-    <p class="name">{username}</p>
-    <div class="rule"></div>
-    <p class="diary">{diaryTitle}</p>
-    {#if showSettings}
-      <a href="/settings" class="settings-link" aria-label="Choose cover" onclick={(e) => e.stopPropagation()}>
-        <img src="/edelweiss.svg" style="width: clamp(40px, 12cqw, 96px); height: auto" alt="" />
-      </a>
-    {/if}
-  </div>
+  {#if backCover}
+    <a href="https://sageframe.net" class="press-link" target="_blank" rel="noreferrer">Sageframe Press</a>
+  {:else}
+    <div class="title-block">
+      <p class="name">{username}</p>
+      <div class="rule"></div>
+      <p class="diary">{diaryTitle}</p>
+      {#if showSettings}
+        <button
+          type="button"
+          class="settings-link"
+          aria-label="Open settings"
+          onclick={(e) => {
+            e.stopPropagation();
+            onOpenSettings?.();
+          }}
+        >
+          <img src="/edelweiss.svg" style="width: clamp(40px, 12cqw, 96px); height: auto" alt="" />
+        </button>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -46,12 +67,14 @@ const { config, username, diaryTitle = 'D I A R Y', showSettings = false }: Prop
   }
 
   .title-block {
-    position: relative;
+    position: absolute;
+    inset: 17% 14% 18% 14%;
     z-index: 1;
     text-align: center;
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     gap: clamp(0.6rem, 3cqw, 2rem);
   }
 
@@ -92,14 +115,30 @@ const { config, username, diaryTitle = 'D I A R Y', showSettings = false }: Prop
 
   .settings-link {
     margin-top: clamp(0.4rem, 2cqw, 1.2rem);
-    opacity: 0.45;
-    transition: opacity 0.2s;
+    opacity: 0.7;
+    background: transparent;
+    border: none;
+    padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    cursor: pointer;
   }
 
-  .settings-link:hover {
-    opacity: 0.9;
+  .press-link {
+    position: absolute;
+    left: 50%;
+    bottom: 4.5%;
+    transform: translateX(-50%);
+    font-family: 'EB Garamond', Georgia, serif;
+    font-size: clamp(1.2rem, 3cqw, 1.9rem);
+    color: #c8a84b;
+    text-decoration: none;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    text-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.8),
+      0 -1px 0 rgba(255, 210, 80, 0.2);
+    pointer-events: auto;
   }
 </style>

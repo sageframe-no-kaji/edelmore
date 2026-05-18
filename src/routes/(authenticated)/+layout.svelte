@@ -1,7 +1,8 @@
 <script lang="ts">
-import { enhance } from '$app/forms';
 import { goto } from '$app/navigation';
+import { invalidateAll } from '$app/navigation';
 import { page } from '$app/stores';
+import { todayIso } from '$lib/dates.js';
 import CalendarModal from '$lib/components/CalendarModal.svelte';
 import CoverPage from '$lib/components/CoverPage.svelte';
 import ExLibrisPage from '$lib/components/ExLibrisPage.svelte';
@@ -17,7 +18,8 @@ type SpreadState =
   | { kind: 'cover' }
   | { kind: 'toc' }
   | { kind: 'entry'; date: string }
-  | { kind: 'settings' };
+	| { kind: 'settings' }
+	| { kind: 'backCover' };
 
 const { children }: { children: Snippet } = $props();
 
@@ -47,11 +49,13 @@ let entryDatePreviews: EntryDatePreview[] = $state(
 const coverId = $derived(($page.data as any).user?.cover_id ?? 'meadow');
 const activeCover = $derived(findCover(coverId));
 // biome-ignore lint/suspicious/noExplicitAny: layout data merged into $page.data
-const username = $derived(($page.data as any).user?.username ?? '');
+let username = $state(untrack(() => ($page.data as any).user?.username ?? ''));
 // biome-ignore lint/suspicious/noExplicitAny: layout data merged into $page.data
-const fontSizeCqw = $derived(($page.data as any).user?.font_size ?? 3.4);
+let fontSizeCqw = $state(untrack(() => ($page.data as any).user?.font_size ?? 3.4));
 // biome-ignore lint/suspicious/noExplicitAny: layout data merged into $page.data
-const diaryTitle = $derived(($page.data as any).user?.diary_title ?? 'D I A R Y');
+let diaryTitle = $state(untrack(() => ($page.data as any).user?.diary_title ?? 'D I A R Y'));
+// biome-ignore lint/suspicious/noExplicitAny: layout data merged into $page.data
+let journalFont = $state(untrack(() => ($page.data as any).user?.journal_font ?? 'eb-garamond'));
 
 // Sync when SvelteKit navigates to a new [date] route.
 $effect(() => {
@@ -115,11 +119,21 @@ function onFlipNext() {
       entryPageSpread += 1;
     } else if (nextDate) {
       navigateTo(nextDate);
+		} else if (entryDatePreviews.length > 0) {
+			spreadState = { kind: 'backCover' };
     }
   }
 }
 
 function onFlipPrev() {
+	if (spreadState.kind === 'backCover') {
+		if (entryDatePreviews.length > 0) {
+			navigateTo(entryDatePreviews[0].entry_date);
+		} else {
+			spreadState = { kind: 'toc' };
+		}
+		return;
+	}
   if (spreadState.kind === 'entry') {
     if (entryPageSpread > 0) {
       entryPageSpread -= 1;
@@ -136,29 +150,46 @@ function onFlipPrev() {
 function openSettings() {
   prevSpreadState = spreadState;
   spreadState = { kind: 'settings' };
+	settingsWarning = false;
+	settingsBackArmed = false;
+	draftUsername = username;
+	draftDiaryTitle = diaryTitle;
+	draftFontSizeCqw = fontSizeCqw;
+	draftJournalFont = journalFont as JournalFont;
+	draftPin = '';
+	draftConfirm = '';
 }
 
 function closeSettings() {
+	if (settingsDirty && !settingsBackArmed) {
+		settingsWarning = true;
+		settingsBackArmed = true;
+		return;
+	}
   spreadState = prevSpreadState ?? { kind: 'cover' };
   prevSpreadState = null;
+	settingsWarning = false;
+	settingsBackArmed = false;
 }
 
 function computeCanFlipPrev(): boolean {
-  return spreadState.kind !== 'cover' && spreadState.kind !== 'settings';
+	return spreadState.kind !== 'cover' && spreadState.kind !== 'settings';
 }
 const canFlipPrev = $derived(computeCanFlipPrev());
 function computeCanFlipNext(): boolean {
   if (spreadState.kind === 'cover') return true;
   if (spreadState.kind === 'toc') return entryDatePreviews.length > 0;
   if (spreadState.kind === 'settings') return false;
-  return entryPageSpread < entrySpreadCount - 1 || nextDate !== null;
+	if (spreadState.kind === 'backCover') return false;
+	return true;
 }
 const canFlipNext = $derived(computeCanFlipNext());
 
 function getSpreadIndex(): number {
   if (spreadState.kind === 'cover') return 0;
   if (spreadState.kind === 'toc') return 1;
-  if (spreadState.kind === 'settings') return Math.max(spreadCount - 1, 2);
+	if (spreadState.kind === 'settings') return Math.max(spreadCount - 2, 2);
+	if (spreadState.kind === 'backCover') return Math.max(spreadCount - 1, 3);
   const idx = entryDatePreviews.findIndex(
     (e) =>
       spreadState.kind === 'entry' &&
@@ -167,12 +198,13 @@ function getSpreadIndex(): number {
   return idx >= 0 ? idx + 2 : 2;
 }
 const spreadIndex = $derived(getSpreadIndex());
-const spreadCount = $derived(entryDatePreviews.length + 2);
+const spreadCount = $derived(entryDatePreviews.length + 3);
 // Cover: whole right page (front cover) is the click target to open.
 // TOC: whole left page (Ex Libris) clicks back to cover; narrow right margin clicks forward.
 // Entry: narrow margin strips on both sides; text area in between is unobstructed.
 function computePrevZonePct(): number {
   if (spreadState.kind === 'settings') return 0;
+	if (spreadState.kind === 'backCover') return 5;
   if (spreadIndex === 0) return 0;
   if (spreadIndex === 1) return 50;
   return 5;
@@ -180,6 +212,7 @@ function computePrevZonePct(): number {
 const prevZonePct = $derived(computePrevZonePct());
 function computeNextZonePct(): number {
   if (spreadState.kind === 'settings') return 0;
+	if (spreadState.kind === 'backCover') return 0;
   if (spreadIndex === 0) return 0;
   return 5;
 }
@@ -188,12 +221,42 @@ const flipOverhangRem = $derived(spreadIndex === 0 ? 0 : 4);
 const entryDate = $derived(spreadState.kind === 'entry' ? spreadState.date : null);
 const entryDates = $derived(new Set(entryDatePreviews.map((e) => e.entry_date)));
 
+type JournalFont = 'eb-garamond' | 'cedarville-cursive';
+const JOURNAL_FONT_OPTIONS: { value: JournalFont; label: string; family: string }[] = [
+	{ value: 'cedarville-cursive', label: 'Cedarville Cursive', family: 'Cedarville Cursive, cursive' },
+	{ value: 'eb-garamond', label: 'EB Garamond', family: 'EB Garamond, Georgia, serif' },
+];
+
+let draftUsername = $state(untrack(() => username));
+let draftDiaryTitle = $state(untrack(() => diaryTitle));
+let draftFontSizeCqw = $state(untrack(() => fontSizeCqw));
+let draftJournalFont = $state(untrack(() => journalFont as JournalFont));
+let draftPin = $state('');
+let draftConfirm = $state('');
+let settingsWarning = $state(false);
+let settingsBackArmed = $state(false);
+let savingSettings = $state(false);
+
+const journalFontFamily = $derived(
+	JOURNAL_FONT_OPTIONS.find((option) => option.value === journalFont)?.family ??
+		'EB Garamond, Georgia, serif'
+);
+
+const settingsDirty = $derived(
+	draftUsername !== username ||
+		draftDiaryTitle !== diaryTitle ||
+		draftFontSizeCqw !== fontSizeCqw ||
+		draftJournalFont !== journalFont ||
+		draftPin.length > 0 ||
+		draftConfirm.length > 0
+);
+
 // Settings overlay
 let prevSpreadState: SpreadState | null = $state(null);
 const FONT_STEPS = [2.4, 2.8, 3.2, 3.6, 4.0, 4.4];
-const fontSizeIdx = $derived(FONT_STEPS.indexOf(fontSizeCqw));
-const prevFontSizeStep = $derived(FONT_STEPS[fontSizeIdx - 1] ?? null);
-const nextFontSizeStep = $derived(FONT_STEPS[fontSizeIdx + 1] ?? null);
+const draftFontSizeIdx = $derived(FONT_STEPS.indexOf(draftFontSizeCqw));
+const draftPrevFontSizeStep = $derived(FONT_STEPS[draftFontSizeIdx - 1] ?? null);
+const draftNextFontSizeStep = $derived(FONT_STEPS[draftFontSizeIdx + 1] ?? null);
 
 // biome-ignore lint/style/useConst: $state requires let for mutation
 let showCalendar = $state(false);
@@ -244,6 +307,41 @@ $effect(() => {
     entryPageSpread = 0;
   });
 });
+
+async function saveSettings() {
+	if (!settingsDirty || savingSettings) return;
+	settingsWarning = false;
+	settingsBackArmed = false;
+	savingSettings = true;
+	const formData = new FormData();
+	formData.set('username', draftUsername);
+	formData.set('diary_title', draftDiaryTitle);
+	formData.set('font_size', String(draftFontSizeCqw));
+	formData.set('journal_font', draftJournalFont);
+	formData.set('pin', draftPin);
+	formData.set('confirm', draftConfirm);
+	const response = await fetch('/settings?/saveSettings', {
+		method: 'POST',
+		body: formData,
+	});
+	savingSettings = false;
+	if (!response.ok) {
+		settingsWarning = true;
+		settingsBackArmed = true;
+		return;
+	}
+	username = draftUsername;
+	diaryTitle = draftDiaryTitle;
+	fontSizeCqw = draftFontSizeCqw;
+	journalFont = draftJournalFont;
+	draftPin = '';
+	draftConfirm = '';
+	settingsWarning = false;
+	settingsBackArmed = false;
+	spreadState = prevSpreadState ?? { kind: 'cover' };
+	prevSpreadState = null;
+	await invalidateAll();
+}
 
 $effect(() => {
   const c = content;
@@ -330,7 +428,7 @@ $effect(() => {
 			if (Math.abs(delta) > 50) { if (delta < 0 && canFlipNext) onFlipNext(); else if (delta > 0 && canFlipPrev) onFlipPrev(); }
 		}}
 	>
-		<div class="relative w-full max-w-5xl aspect-[3/2] max-h-[80vh]" style="--page-font-size: {fontSizeCqw}cqw">
+		<div class="relative w-full max-w-5xl aspect-[3/2] max-h-[80vh]" style="--page-font-size: {draftFontSizeCqw}cqw">
 			<Spread
 				{onFlipPrev}
 				{onFlipNext}
@@ -341,7 +439,7 @@ $effect(() => {
 				{prevZonePct}
 				{nextZonePct}
 				overhangRem={flipOverhangRem}
-				hideLeftPage={spreadState.kind === 'cover'}
+				hideLeftPage={spreadState.kind === 'cover' || spreadState.kind === 'backCover'}
 			>
 				{#snippet leftPage()}
 					{#if spreadState.kind === 'cover'}
@@ -349,47 +447,7 @@ $effect(() => {
 					{:else if spreadState.kind === 'toc'}
 						<ExLibrisPage username={username} />
 					{:else if spreadState.kind === 'settings'}
-						<div class="absolute inset-0 px-8 pt-10 pb-8 overflow-hidden font-serif">
-							<button
-								type="button"
-								onclick={closeSettings}
-								class="text-xs tracking-widest uppercase text-stone-400 hover:text-stone-600 transition-colors"
-							>← Back</button>
-
-							<div class="mt-10">
-								<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-3">Display Name</p>
-								<form method="POST" action="/settings?/updateName" use:enhance>
-									<div class="flex items-end gap-4">
-										<input
-											type="text"
-											name="username"
-											value={username}
-											maxlength="40"
-											required
-											class="flex-1 bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors"
-										/>
-										<button type="submit" class="text-xs tracking-widest uppercase text-stone-400 hover:text-stone-600 transition-colors pb-1">Save</button>
-									</div>
-								</form>
-							</div>
-
-							<div class="mt-10">
-								<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-3">Diary Title</p>
-								<form method="POST" action="/settings?/updateDiaryTitle" use:enhance>
-									<div class="flex items-end gap-4">
-										<input
-											type="text"
-											name="diary_title"
-											value={diaryTitle}
-											maxlength="40"
-											required
-											class="flex-1 bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors"
-										/>
-										<button type="submit" class="text-xs tracking-widest uppercase text-stone-400 hover:text-stone-600 transition-colors pb-1">Save</button>
-									</div>
-								</form>
-							</div>
-						</div>
+						<div class="h-full w-full bg-transparent"></div>
 					{:else if spreadState.kind === 'entry'}
 						{@const leftStart = entryPageSpread === 0 ? 0 : (splitPoints[entryPageSpread * 2 - 1] ?? 0)}
 						{@const leftEnd = splitPoints[entryPageSpread * 2]}
@@ -397,9 +455,15 @@ $effect(() => {
 							<button
 								type="button"
 								onclick={() => { showCalendar = true; }}
-								class="absolute top-5 left-8 z-10 text-xs text-stone-400 tracking-wide uppercase hover:text-ornament-gold transition-colors"
+								class="absolute top-5 left-8 z-10 page-top-link text-xs text-stone-400 tracking-wide hover:text-ornament-gold transition-colors"
 								aria-label="Open calendar"
 							>{($page.data as any).displayDate ?? ''}</button>
+							<button
+								type="button"
+								onclick={() => { void navigateTo(todayIso()); }}
+								class="absolute top-5 right-8 z-10 page-top-link text-xs text-stone-400 tracking-wide hover:text-ornament-gold transition-colors"
+								aria-label="Turn to Today"
+							>Turn to today...</button>
 							<textarea
 								bind:this={textareaEl}
 								oninput={(e) => {
@@ -407,8 +471,8 @@ $effect(() => {
 									const suffix = leftEnd !== undefined ? content.slice(leftEnd) : '';
 									content = content.slice(0, leftStart) + e.currentTarget.value + suffix;
 								}}
-								class="absolute inset-0 w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent text-ink-900 font-serif leading-relaxed outline-none"
-								style="font-size: var(--page-font-size)"
+								class="absolute inset-0 w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent text-ink-900 leading-relaxed outline-none"
+								style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
 								placeholder="Begin writing…"
 							></textarea>
 							{#if saved}
@@ -423,75 +487,71 @@ $effect(() => {
 						<button
 							type="button"
 							onclick={openSettings}
-							class="absolute top-4 right-5 z-20 opacity-25 hover:opacity-75 transition-opacity"
+								class="absolute top-4 right-5 z-20 opacity-70"
 							aria-label="Settings"
 						><img src="/edelweiss.svg" style="width: 1.6rem; height: auto" alt="" /></button>
 					{/if}
 
 					{#if spreadState.kind === 'settings'}
 						<div class="absolute inset-0 px-8 pt-10 pb-8 overflow-hidden font-serif">
-							<div class="mt-4">
-								<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-3">Text Size</p>
-								<div class="flex items-center gap-5">
-									<form method="POST" action="/settings?/updateFontSize" use:enhance>
-										<input type="hidden" name="font_size" value={prevFontSizeStep ?? fontSizeCqw} />
-										<button
-											type="submit"
-											disabled={prevFontSizeStep === null}
-											class="w-7 h-7 border border-stone-300 text-stone-500 text-lg leading-none hover:border-stone-500 transition-colors disabled:opacity-20 flex items-center justify-center"
-										>−</button>
-									</form>
-									<span class="text-stone-500 text-sm">{fontSizeIdx + 1} / {FONT_STEPS.length}</span>
-									<form method="POST" action="/settings?/updateFontSize" use:enhance>
-										<input type="hidden" name="font_size" value={nextFontSizeStep ?? fontSizeCqw} />
-										<button
-											type="submit"
-											disabled={nextFontSizeStep === null}
-											class="w-7 h-7 border border-stone-300 text-stone-500 text-lg leading-none hover:border-stone-500 transition-colors disabled:opacity-20 flex items-center justify-center"
-										>+</button>
-									</form>
-								</div>
-							</div>
+							<div class="flex h-full flex-col">
+								{#if settingsWarning}
+									<span class="settings-warning-text">You have unsaved changes.</span>
+								{/if}
 
-							<div class="mt-10">
-								<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-1">Change PIN</p>
-								<p class="text-[0.6rem] italic text-stone-400 mb-3">4 digits — no current PIN required</p>
-								<form method="POST" action="/settings?/updatePin" use:enhance>
-									<div class="flex items-end gap-3 flex-wrap">
-										<input
-											type="password"
-											name="pin"
-											inputmode="numeric"
-											pattern="\d{4}"
-											maxlength="4"
-											placeholder="New PIN"
-											required
-											class="bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors"
-											style="width: 5rem"
-										/>
-										<input
-											type="password"
-											name="confirm"
-											inputmode="numeric"
-											pattern="\d{4}"
-											maxlength="4"
-											placeholder="Confirm"
-											required
-											class="bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors"
-											style="width: 5rem"
-										/>
-										<button type="submit" class="text-xs tracking-widest uppercase text-stone-400 hover:text-stone-600 transition-colors pb-1">Set</button>
-									</div>
-								</form>
+								<div class="flex-1 space-y-7">
+									<section>
+										<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Display Name</p>
+										<input type="text" bind:value={draftUsername} maxlength="40" required class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors" />
+									</section>
+
+									<section>
+										<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Diary Title</p>
+										<input type="text" bind:value={draftDiaryTitle} maxlength="40" required class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors" />
+									</section>
+
+									<section>
+										<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Text Size</p>
+										<div class="flex items-center gap-5">
+												<button type="button" onclick={() => { draftFontSizeCqw = draftPrevFontSizeStep ?? draftFontSizeCqw; }} disabled={draftPrevFontSizeStep === null} class="w-7 h-7 border border-stone-300 text-stone-500 text-lg leading-none hover:border-stone-500 transition-colors disabled:opacity-20 flex items-center justify-center">−</button>
+											<span class="text-stone-500 text-sm">{FONT_STEPS.indexOf(draftFontSizeCqw) + 1} / {FONT_STEPS.length}</span>
+												<button type="button" onclick={() => { draftFontSizeCqw = draftNextFontSizeStep ?? draftFontSizeCqw; }} disabled={draftNextFontSizeStep === null} class="w-7 h-7 border border-stone-300 text-stone-500 text-lg leading-none hover:border-stone-500 transition-colors disabled:opacity-20 flex items-center justify-center">+</button>
+										</div>
+									</section>
+
+									<section>
+										<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Journal Font</p>
+										<div class="flex flex-col gap-2">
+											{#each JOURNAL_FONT_OPTIONS as option}
+												<label class="flex items-center gap-3 text-sm text-stone-500">
+													<input type="radio" bind:group={draftJournalFont} value={option.value} />
+													<span style={`font-family: ${option.family}`}>{option.label}</span>
+												</label>
+											{/each}
+										</div>
+									</section>
+
+									<section>
+										<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-1">Change PIN</p>
+										<p class="text-[0.6rem] italic text-stone-400 mb-2">4 digits — no current PIN required</p>
+										<input type="password" bind:value={draftPin} inputmode="numeric" pattern="\d{4}" maxlength="4" placeholder="New PIN" class="mb-2 w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors" />
+										<input type="password" bind:value={draftConfirm} inputmode="numeric" pattern="\d{4}" maxlength="4" placeholder="Confirm PIN" class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors" />
+									</section>
+								</div>
+
+								<div class="mt-8 flex items-end justify-end gap-3">
+									<button type="button" onclick={closeSettings} class="settings-back-link">← Back</button>
+									<button type="button" onclick={saveSettings} disabled={!settingsDirty || savingSettings} class="settings-save-btn">{savingSettings ? 'Saving…' : 'Save'}</button>
+								</div>
 							</div>
 						</div>
 					{:else if spreadState.kind === 'entry'}
-						<!-- TOC link — center top of right page, sits within the pt-12 top margin -->
+						<!-- Recent entries link — center top of right page, sits within the pt-12 top margin -->
 						<button
 							type="button"
 							onclick={() => { spreadState = { kind: 'toc' }; }}
-							class="absolute top-5 left-1/2 -translate-x-1/2 z-10 text-xs text-stone-400 tracking-wide uppercase hover:text-ornament-gold transition-colors"
-						>TOC</button>
+							class="absolute top-5 left-1/2 -translate-x-1/2 z-10 page-top-link text-xs text-stone-400 tracking-wide hover:text-ornament-gold transition-colors"
+						>Recent entries</button>
 						{@const rightStart = splitPoints[entryPageSpread * 2]}
 						{@const rightEnd = splitPoints[entryPageSpread * 2 + 1]}
 						{#if rightStart !== undefined}
@@ -502,8 +562,8 @@ $effect(() => {
 									const suffix = rightEnd !== undefined ? content.slice(rightEnd) : '';
 									content = content.slice(0, rightStart) + e.currentTarget.value + suffix;
 								}}
-								class="absolute inset-0 w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent text-ink-900 font-serif leading-relaxed outline-none"
-								style="font-size: var(--page-font-size)"
+								class="absolute inset-0 w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent text-ink-900 leading-relaxed outline-none"
+								style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
 							></textarea>
 							{#if hasMoreContent}
 								<div class="absolute bottom-2 right-3 text-xs text-stone-400 italic pointer-events-none">→ continued</div>
@@ -513,7 +573,11 @@ $effect(() => {
 						<TocPage entries={entryDatePreviews} onNavigate={navigateTo} />
 					{:else if spreadState.kind === 'cover'}
 						<div role="presentation" class="h-full w-full cursor-pointer" onclick={onFlipNext}>
-							<CoverPage config={activeCover} {username} {diaryTitle} showSettings={true} />
+							<CoverPage config={activeCover} {username} {diaryTitle} showSettings={true} onOpenSettings={openSettings} />
+						</div>
+					{:else if spreadState.kind === 'backCover'}
+						<div role="presentation" class="h-full w-full">
+							<CoverPage config={activeCover} {username} {diaryTitle} backCover={true} />
 						</div>
 					{/if}
 				{/snippet}
@@ -547,7 +611,7 @@ $effect(() => {
 					<button
 						type="button"
 						onclick={openSettings}
-						class="opacity-30 hover:opacity-70 transition-opacity"
+						class="opacity-70"
 						aria-label="Settings"
 					><img src="/edelweiss.svg" style="width: 1.25rem; height: auto" alt="" /></button>
 					<button
@@ -561,7 +625,8 @@ $effect(() => {
 			<div class="flex-1 flex flex-col p-4">
 				<textarea
 					bind:value={content}
-					class="flex-1 w-full resize-none bg-transparent font-serif text-sm leading-relaxed outline-none"
+					class="flex-1 w-full resize-none bg-transparent text-sm leading-relaxed outline-none"
+					style={`font-family: ${journalFontFamily}`}
 					placeholder="Begin writing…"
 				></textarea>
 				{#if saved}
@@ -574,75 +639,71 @@ $effect(() => {
 				<button
 					type="button"
 					onclick={openSettings}
-					class="opacity-30 hover:opacity-70 transition-opacity"
+					class="opacity-70"
 					aria-label="Settings"
 				><img src="/edelweiss.svg" style="width: 1.25rem; height: auto" alt="" /></button>
 			</div>
 			<TocPage entries={entryDatePreviews} onNavigate={navigateTo} />
 		{:else if spreadState.kind === 'settings'}
 			<div class="flex-1 flex flex-col bg-[#fdf6e3] overflow-auto px-6 py-6 font-serif">
-				<button
-					type="button"
-					onclick={closeSettings}
-					class="text-xs tracking-widest uppercase text-stone-400 hover:text-stone-600 transition-colors self-start mb-8"
-				>← Back</button>
+				{#if settingsWarning}
+					<span class="settings-warning-text">You have unsaved changes.</span>
+				{/if}
 
-				<div class="mb-8">
-					<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Display Name</p>
-					<form method="POST" action="/settings?/updateName" use:enhance>
-						<div class="flex items-end gap-3">
-							<input type="text" name="username" value={username} maxlength="40" required
-								class="flex-1 bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none" />
-							<button type="submit" class="text-xs tracking-widest uppercase text-stone-400 pb-1">Save</button>
+				<div class="space-y-6">
+					<section>
+						<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Display Name</p>
+						<input type="text" bind:value={draftUsername} maxlength="40" required class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none" />
+					</section>
+
+					<section>
+						<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Diary Title</p>
+						<input type="text" bind:value={draftDiaryTitle} maxlength="40" required class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none" />
+					</section>
+
+					<section>
+						<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Text Size</p>
+						<div class="flex items-center gap-5">
+							<button type="button" onclick={() => { draftFontSizeCqw = draftPrevFontSizeStep ?? draftFontSizeCqw; }} disabled={draftPrevFontSizeStep === null} class="w-7 h-7 border border-stone-300 text-stone-500 text-lg disabled:opacity-20 flex items-center justify-center">−</button>
+							<span class="text-stone-500 text-sm">{FONT_STEPS.indexOf(draftFontSizeCqw) + 1} / {FONT_STEPS.length}</span>
+							<button type="button" onclick={() => { draftFontSizeCqw = draftNextFontSizeStep ?? draftFontSizeCqw; }} disabled={draftNextFontSizeStep === null} class="w-7 h-7 border border-stone-300 text-stone-500 text-lg disabled:opacity-20 flex items-center justify-center">+</button>
 						</div>
-					</form>
+					</section>
+
+					<section>
+						<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Journal Font</p>
+						<div class="flex flex-col gap-2">
+							{#each JOURNAL_FONT_OPTIONS as option}
+								<label class="flex items-center gap-3 text-sm text-stone-500">
+									<input type="radio" bind:group={draftJournalFont} value={option.value} />
+									<span style={`font-family: ${option.family}`}>{option.label}</span>
+								</label>
+							{/each}
+						</div>
+					</section>
+
+					<section>
+						<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-1">Change PIN</p>
+						<p class="text-[0.6rem] italic text-stone-400 mb-2">4 digits — no current PIN required</p>
+						<div class="space-y-2">
+							<input type="password" bind:value={draftPin} inputmode="numeric" pattern="\d{4}" maxlength="4" placeholder="New PIN" class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none" />
+							<input type="password" bind:value={draftConfirm} inputmode="numeric" pattern="\d{4}" maxlength="4" placeholder="Confirm PIN" class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none" />
+						</div>
+					</section>
 				</div>
 
-				<div class="mb-8">
-					<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Diary Title</p>
-					<form method="POST" action="/settings?/updateDiaryTitle" use:enhance>
-						<div class="flex items-end gap-3">
-							<input type="text" name="diary_title" value={diaryTitle} maxlength="40" required
-								class="flex-1 bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none" />
-							<button type="submit" class="text-xs tracking-widest uppercase text-stone-400 pb-1">Save</button>
-						</div>
-					</form>
-				</div>
-
-				<div class="mb-8">
-					<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-3">Text Size</p>
-					<div class="flex items-center gap-5">
-						<form method="POST" action="/settings?/updateFontSize" use:enhance>
-							<input type="hidden" name="font_size" value={prevFontSizeStep ?? fontSizeCqw} />
-							<button type="submit" disabled={prevFontSizeStep === null}
-								class="w-7 h-7 border border-stone-300 text-stone-500 text-lg disabled:opacity-20 flex items-center justify-center">−</button>
-						</form>
-						<span class="text-stone-500 text-sm">{fontSizeIdx + 1} / {FONT_STEPS.length}</span>
-						<form method="POST" action="/settings?/updateFontSize" use:enhance>
-							<input type="hidden" name="font_size" value={nextFontSizeStep ?? fontSizeCqw} />
-							<button type="submit" disabled={nextFontSizeStep === null}
-								class="w-7 h-7 border border-stone-300 text-stone-500 text-lg disabled:opacity-20 flex items-center justify-center">+</button>
-						</form>
-					</div>
-				</div>
-
-				<div class="mb-8">
-					<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-1">Change PIN</p>
-					<p class="text-[0.6rem] italic text-stone-400 mb-3">4 digits — no current PIN required</p>
-					<form method="POST" action="/settings?/updatePin" use:enhance>
-						<div class="flex items-end gap-3 flex-wrap">
-							<input type="password" name="pin" inputmode="numeric" pattern="\d{4}" maxlength="4" placeholder="New PIN" required
-								class="bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none" style="width:5rem" />
-							<input type="password" name="confirm" inputmode="numeric" pattern="\d{4}" maxlength="4" placeholder="Confirm" required
-								class="bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none" style="width:5rem" />
-							<button type="submit" class="text-xs tracking-widest uppercase text-stone-400 pb-1">Set</button>
-						</div>
-					</form>
+				<div class="mt-8 flex items-end justify-end gap-3">
+					<button type="button" onclick={closeSettings} class="settings-back-link">← Back</button>
+					<button type="button" onclick={saveSettings} disabled={!settingsDirty || savingSettings} class="settings-save-btn">{savingSettings ? 'Saving…' : 'Save'}</button>
 				</div>
 			</div>
+			{:else if spreadState.kind === 'backCover'}
+				<div class="flex-1 flex flex-col bg-[#fdf6e3] overflow-hidden">
+					<CoverPage config={activeCover} {username} {diaryTitle} backCover={true} />
+				</div>
 		{:else}
 			<div class="flex-1 flex flex-col bg-[#fdf6e3] overflow-hidden">
-				<CoverPage config={activeCover} {username} {diaryTitle} showSettings={true} />
+				<CoverPage config={activeCover} {username} {diaryTitle} showSettings={true} onOpenSettings={openSettings} />
 			</div>
 		{/if}
 	</div>
@@ -656,6 +717,45 @@ $effect(() => {
 		/>
 	{/if}
 </div>
+
+<style>
+	.page-top-link {
+		font-family: 'EB Garamond', Georgia, serif;
+	}
+
+	.settings-back-link {
+		font-family: 'Rouge Script', cursive;
+		font-size: 1.6rem;
+		color: #8b6914;
+		text-shadow:
+			0 1px 2px rgba(255, 250, 230, 0.45),
+			0 -1px 0 rgba(0, 0, 0, 0.25);
+	}
+
+	.settings-save-btn {
+		min-width: 5.25rem;
+		border: 1px solid #c4a96d;
+		border-radius: 9999px;
+		padding: 0.45rem 1rem;
+		font-family: 'EB Garamond', Georgia, serif;
+		font-size: 0.95rem;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: #8b6914;
+		background: rgba(60, 39, 13, 0.06);
+		transition: background 0.15s, color 0.15s, opacity 0.15s;
+	}
+
+	.settings-save-btn:not(:disabled):hover {
+		background: #c4a96d;
+		color: #1e1610;
+	}
+
+	.settings-save-btn:disabled {
+		opacity: 0.35;
+		cursor: default;
+	}
+</style>
 
 <!-- SvelteKit requires children to be rendered; content lives in the layout, not the page. -->
 <div class="hidden">{@render children()}</div>

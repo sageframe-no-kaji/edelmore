@@ -5,8 +5,8 @@ import TocPage from './TocPage.svelte';
 afterEach(() => cleanup());
 
 const entries = [
-  { entry_date: '2026-05-13', preview: 'Yesterday.' },
   { entry_date: '2026-05-14', preview: 'Today.' },
+  { entry_date: '2026-05-13', preview: 'Yesterday.' },
 ];
 
 describe('TocPage', () => {
@@ -16,6 +16,13 @@ describe('TocPage', () => {
     const buttons = getAllByRole('button');
     buttons[0].click();
     expect(onNavigate).toHaveBeenCalledWith('2026-05-13');
+  });
+
+  it('renders entries oldest first', () => {
+    const { getAllByRole } = render(TocPage, { entries, onNavigate: vi.fn() });
+    const buttons = getAllByRole('button');
+    expect(buttons[0].textContent).toContain('May 13');
+    expect(buttons[1].textContent).toContain('May 14');
   });
 
   it('renders empty state when entries is empty', () => {
