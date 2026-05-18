@@ -20,7 +20,7 @@ const { config, username, diaryTitle = 'D I A R Y', showSettings = false }: Prop
     <p class="diary">{diaryTitle}</p>
     {#if showSettings}
       <a href="/settings" class="settings-link" aria-label="Choose cover" onclick={(e) => e.stopPropagation()}>
-        <img src="/edelweiss.svg" width="72" height="72" alt="" />
+        <img src="/edelweiss.svg" style="width: clamp(28px, 6cqw, 56px); height: auto" alt="" />
       </a>
     {/if}
   </div>
@@ -31,7 +31,6 @@ const { config, username, diaryTitle = 'D I A R Y', showSettings = false }: Prop
     position: relative;
     width: 100%;
     height: 100%;
-    overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -42,7 +41,7 @@ const { config, username, diaryTitle = 'D I A R Y', showSettings = false }: Prop
     inset: 0;
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     pointer-events: none;
   }
 
@@ -53,14 +52,15 @@ const { config, username, diaryTitle = 'D I A R Y', showSettings = false }: Prop
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1.5rem;
+    gap: clamp(0.4rem, 1.5cqw, 1.2rem);
   }
 
   .name {
     font-family: 'EB Garamond', Georgia, serif;
-    font-size: clamp(3rem, 9.6vw, 6rem);
+    font-size: clamp(0.9rem, 5.5cqw, 2.5rem);
     font-weight: 500;
     letter-spacing: 0.28em;
+    padding-left: 0.28em;
     text-transform: uppercase;
     margin: 0;
     line-height: 1;
@@ -71,7 +71,7 @@ const { config, username, diaryTitle = 'D I A R Y', showSettings = false }: Prop
   }
 
   .rule {
-    width: 7.5rem;
+    width: min(7.5rem, 40cqw);
     height: 1px;
     background: #c8a84b;
     opacity: 0.65;
@@ -79,8 +79,9 @@ const { config, username, diaryTitle = 'D I A R Y', showSettings = false }: Prop
 
   .diary {
     font-family: 'EB Garamond', Georgia, serif;
-    font-size: clamp(1.5rem, 3.9vw, 2.25rem);
+    font-size: clamp(0.5rem, 2.2cqw, 1rem);
     letter-spacing: 0.55em;
+    padding-left: 0.55em;
     margin: 0;
     line-height: 1;
     color: #c8a84b;
@@ -90,7 +91,7 @@ const { config, username, diaryTitle = 'D I A R Y', showSettings = false }: Prop
   }
 
   .settings-link {
-    margin-top: 0.75rem;
+    margin-top: clamp(0.25rem, 1cqw, 0.75rem);
     opacity: 0.45;
     transition: opacity 0.2s;
     display: flex;

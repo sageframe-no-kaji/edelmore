@@ -112,7 +112,9 @@ const nextSize = $derived(FONT_STEPS[FONT_STEPS.indexOf(currentSize) + 1] ?? nul
 <style>
   .settings-shell {
     min-height: 100vh;
-    background: #2a2018;
+    background-image: url('/background.png');
+    background-repeat: repeat;
+    background-size: auto;
     display: flex;
     flex-direction: column;
     padding: 2rem 1.5rem;

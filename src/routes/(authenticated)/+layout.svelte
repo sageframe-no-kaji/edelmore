@@ -279,7 +279,7 @@ $effect(() => {
 </script>
 
 <!-- Full-height book container -->
-<div class="h-screen bg-stone-900 flex flex-col">
+<div class="h-screen flex flex-col" style="background-image: url('/background.png'); background-repeat: repeat; background-size: auto;">
 
 	<!-- Desktop: CSS 3D Spread -->
 	<div
