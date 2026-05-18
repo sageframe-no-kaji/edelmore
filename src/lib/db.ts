@@ -8,6 +8,8 @@ export type User = {
   username: string;
   pin_hash: string;
   cover_id: string;
+  font_size: number;
+  diary_title: string;
   created_at: string;
 };
 
@@ -34,11 +36,13 @@ export function createDb(path: string): Database {
 export function applySchema(db: Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
-      id         INTEGER PRIMARY KEY,
-      username   TEXT UNIQUE NOT NULL,
-      pin_hash   TEXT NOT NULL,
-      cover_id   TEXT NOT NULL DEFAULT 'meadow',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      id          INTEGER PRIMARY KEY,
+      username    TEXT UNIQUE NOT NULL,
+      pin_hash    TEXT NOT NULL,
+      cover_id    TEXT NOT NULL DEFAULT 'meadow',
+      font_size   REAL NOT NULL DEFAULT 3.4,
+      diary_title TEXT NOT NULL DEFAULT 'D I A R Y',
+      created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS entries (
@@ -56,6 +60,18 @@ export function applySchema(db: Database): void {
       expires_at TIMESTAMP NOT NULL
     );
   `);
+
+  // Idempotent migrations for columns added after initial release.
+  for (const sql of [
+    'ALTER TABLE users ADD COLUMN font_size REAL NOT NULL DEFAULT 3.4',
+    `ALTER TABLE users ADD COLUMN diary_title TEXT NOT NULL DEFAULT 'D I A R Y'`,
+  ]) {
+    try {
+      db.exec(sql);
+    } catch {
+      /* column already exists */
+    }
+  }
 }
 
 export function getUserByUsername(db: Database, username: string): User | undefined {
@@ -65,9 +81,13 @@ export function getUserByUsername(db: Database, username: string): User | undefi
 export function getUserById(
   db: Database,
   id: number
-): { id: number; username: string; cover_id: string } | undefined {
-  return db.prepare('SELECT id, username, cover_id FROM users WHERE id = ?').get(id) as
-    | { id: number; username: string; cover_id: string }
+):
+  | { id: number; username: string; cover_id: string; font_size: number; diary_title: string }
+  | undefined {
+  return db
+    .prepare('SELECT id, username, cover_id, font_size, diary_title FROM users WHERE id = ?')
+    .get(id) as
+    | { id: number; username: string; cover_id: string; font_size: number; diary_title: string }
     | undefined;
 }
 
@@ -152,6 +172,22 @@ export function makeEntryPreview(content: string): string {
 
 export function updateUserCoverId(db: Database, userId: number, coverId: string): void {
   db.prepare('UPDATE users SET cover_id = ? WHERE id = ?').run(coverId, userId);
+}
+
+export function updateUsername(db: Database, userId: number, username: string): void {
+  db.prepare('UPDATE users SET username = ? WHERE id = ?').run(username, userId);
+}
+
+export function updatePinHash(db: Database, userId: number, hash: string): void {
+  db.prepare('UPDATE users SET pin_hash = ? WHERE id = ?').run(hash, userId);
+}
+
+export function updateFontSize(db: Database, userId: number, size: number): void {
+  db.prepare('UPDATE users SET font_size = ? WHERE id = ?').run(size, userId);
+}
+
+export function updateDiaryTitle(db: Database, userId: number, title: string): void {
+  db.prepare('UPDATE users SET diary_title = ? WHERE id = ?').run(title, userId);
 }
 
 export function listEntryDatesWithPreview(

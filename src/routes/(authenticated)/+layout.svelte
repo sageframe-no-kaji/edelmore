@@ -43,6 +43,10 @@ const coverId = $derived(($page.data as any).user?.cover_id ?? 'meadow');
 const activeCover = $derived(findCover(coverId));
 // biome-ignore lint/suspicious/noExplicitAny: layout data merged into $page.data
 const username = $derived(($page.data as any).user?.username ?? '');
+// biome-ignore lint/suspicious/noExplicitAny: layout data merged into $page.data
+const fontSizeCqw = $derived(($page.data as any).user?.font_size ?? 3.4);
+// biome-ignore lint/suspicious/noExplicitAny: layout data merged into $page.data
+const diaryTitle = $derived(($page.data as any).user?.diary_title ?? 'D I A R Y');
 
 // Sync when SvelteKit navigates to a new [date] route.
 $effect(() => {
@@ -148,7 +152,8 @@ const spreadCount = $derived(entryDatePreviews.length + 2);
 // TOC: whole left page (Ex Libris) clicks back to cover; narrow right margin clicks forward.
 // Entry: narrow margin strips on both sides; text area in between is unobstructed.
 const prevZonePct = $derived(spreadIndex === 0 ? 0 : spreadIndex === 1 ? 50 : 5);
-const nextZonePct = $derived(spreadIndex === 0 ? 50 : 5);
+const nextZonePct = $derived(spreadIndex === 0 ? 0 : 5);
+const flipOverhangRem = $derived(spreadIndex === 0 ? 0 : 4);
 const entryDate = $derived(spreadState.kind === 'entry' ? spreadState.date : null);
 const entryDates = $derived(new Set(entryDatePreviews.map((e) => e.entry_date)));
 
@@ -287,7 +292,7 @@ $effect(() => {
 			if (Math.abs(delta) > 50) { if (delta < 0 && canFlipNext) onFlipNext(); else if (delta > 0 && canFlipPrev) onFlipPrev(); }
 		}}
 	>
-		<div class="relative w-full max-w-5xl h-full max-h-[80vh]">
+		<div class="relative w-full max-w-5xl aspect-[3/2] max-h-[80vh]" style="--page-font-size: {fontSizeCqw}cqw">
 			<Spread
 				{onFlipPrev}
 				{onFlipNext}
@@ -295,8 +300,10 @@ $effect(() => {
 				{canFlipNext}
 				{spreadIndex}
 				{spreadCount}
-{prevZonePct}
+				{prevZonePct}
 				{nextZonePct}
+				overhangRem={flipOverhangRem}
+				hideLeftPage={spreadState.kind === 'cover'}
 			>
 				{#snippet leftPage()}
 					{#if spreadState.kind === 'cover'}
@@ -320,7 +327,8 @@ $effect(() => {
 									const suffix = leftEnd !== undefined ? content.slice(leftEnd) : '';
 									content = content.slice(0, leftStart) + e.currentTarget.value + suffix;
 								}}
-								class="absolute inset-0 w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent text-ink-900 font-serif text-sm leading-relaxed outline-none"
+								class="absolute inset-0 w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent text-ink-900 font-serif leading-relaxed outline-none"
+								style="font-size: var(--page-font-size)"
 								placeholder="Begin writing…"
 							></textarea>
 							{#if saved}
@@ -347,7 +355,8 @@ $effect(() => {
 									const suffix = rightEnd !== undefined ? content.slice(rightEnd) : '';
 									content = content.slice(0, rightStart) + e.currentTarget.value + suffix;
 								}}
-								class="absolute inset-0 w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent text-ink-900 font-serif text-sm leading-relaxed outline-none"
+								class="absolute inset-0 w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent text-ink-900 font-serif leading-relaxed outline-none"
+								style="font-size: var(--page-font-size)"
 							></textarea>
 							{#if hasMoreContent}
 								<div class="absolute bottom-2 right-3 text-xs text-stone-400 italic pointer-events-none">→ continued</div>
@@ -356,7 +365,9 @@ $effect(() => {
 					{:else if spreadState.kind === 'toc'}
 						<TocPage entries={entryDatePreviews} onNavigate={navigateTo} />
 					{:else if spreadState.kind === 'cover'}
-						<CoverPage config={activeCover} {username} showSettings={true} />
+						<div role="presentation" class="h-full w-full cursor-pointer" onclick={onFlipNext}>
+							<CoverPage config={activeCover} {username} {diaryTitle} showSettings={true} />
+						</div>
 					{/if}
 				{/snippet}
 			</Spread>
@@ -409,7 +420,7 @@ $effect(() => {
 			<TocPage entries={entryDatePreviews} onNavigate={navigateTo} />
 		{:else}
 			<div class="flex-1 flex flex-col bg-[#fdf6e3] overflow-hidden">
-				<CoverPage config={activeCover} {username} showSettings={true} />
+				<CoverPage config={activeCover} {username} {diaryTitle} showSettings={true} />
 			</div>
 		{/if}
 	</div>

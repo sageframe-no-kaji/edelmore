@@ -12,9 +12,14 @@ type Props = {
   flipDuration?: number;
   flipTrigger?: number;
   flipTriggerDir?: 'next' | 'prev';
-  // 0 = no zone rendered. Cover passes 50 so the whole right page is clickable.
+  // 0 = no zone rendered.
   prevZonePct?: number;
   nextZonePct?: number;
+  // Extra reach of the flip zones outside the page edge into the gutter (rem).
+  overhangRem?: number;
+  // When true the left page is invisible but still occupies its layout space,
+  // so the right page stays on the right (used for the closed-book cover view).
+  hideLeftPage?: boolean;
   leftPage?: Snippet;
   rightPage?: Snippet;
 };
@@ -30,6 +35,8 @@ const {
   flipTriggerDir = 'next',
   prevZonePct = 0,
   nextZonePct = 0,
+  overhangRem = 0,
+  hideLeftPage = false,
   leftPage,
   rightPage,
 }: Props = $props();
@@ -70,7 +77,7 @@ $effect(() => {
 		{/if}
 
 		<!-- Left page -->
-		<div class="page page-left">
+		<div class="page page-left" style={hideLeftPage ? 'visibility:hidden;border-right:none' : ''}>
 			{#if leftPage}{@render leftPage()}{/if}
 		</div>
 
@@ -84,7 +91,7 @@ $effect(() => {
 			<button
 				type="button"
 				class="flip-zone flip-zone-prev"
-				style="width: {prevZonePct}%"
+				style="left: -{overhangRem}rem; width: calc({overhangRem}rem + {prevZonePct}%)"
 				aria-label="Previous page"
 				disabled={!canFlipPrev}
 				onclick={onFlipPrev}
@@ -95,7 +102,7 @@ $effect(() => {
 			<button
 				type="button"
 				class="flip-zone flip-zone-next"
-				style="width: {nextZonePct}%"
+				style="right: -{overhangRem}rem; width: calc({overhangRem}rem + {nextZonePct}%)"
 				aria-label="Next page"
 				disabled={!canFlipNext}
 				onclick={onFlipNext}
@@ -109,6 +116,7 @@ $effect(() => {
 		position: relative;
 		width: 100%;
 		height: 100%;
+		overflow: visible;
 	}
 
 	.spread {
@@ -123,6 +131,7 @@ $effect(() => {
 		position: relative;
 		overflow: hidden;
 		background: #f5e9cf;
+		container-type: inline-size;
 	}
 
 	.page::before {
