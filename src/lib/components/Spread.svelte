@@ -68,7 +68,7 @@ $effect(() => {
 			</div>
 		{/if}
 
-		{#if rightLayers > 0}
+		{#if rightLayers > 0 && !hideLeftPage}
 			<div class="stack stack-right" aria-hidden="true">
 				{#each { length: rightLayers } as _, i}
 					<div class="stack-leaf" style="right: {-(i + 1) * 2}px; z-index: {-i}"></div>
