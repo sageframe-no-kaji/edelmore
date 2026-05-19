@@ -74,19 +74,6 @@ $effect(() => {
   });
 });
 
-function renderMarkdown(text: string): string {
-	const escaped = text
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;');
-
-	return escaped
-		.replace(/~~([^~]+)~~/g, '<s>$1</s>')
-		.replace(/\*\*([^\*]+)\*\*/g, '<strong>$1</strong>')
-		.replace(/__([^_]+)__/g, '<u>$1</u>')
-		.replace(/\*([^\*]+)\*/g, '<em>$1</em>');
-}
-
 // Autosave — fires only when content differs from what the server has.
 $effect(() => {
   const c = content;
@@ -264,6 +251,25 @@ const settingsDirty = $derived(
 		draftConfirm.length > 0
 );
 
+$effect(() => {
+	// biome-ignore lint/suspicious/noExplicitAny: layout data merged into $page.data
+	const user = ($page.data as any).user;
+	if (!user) return;
+	untrack(() => {
+		if (spreadState.kind === 'settings' && settingsDirty) return;
+		username = user.username ?? '';
+		diaryTitle = user.diary_title ?? 'D I A R Y';
+		fontSizeCqw = user.font_size ?? 3.4;
+		journalFont = user.journal_font ?? 'eb-garamond';
+		if (spreadState.kind !== 'settings') {
+			draftUsername = username;
+			draftDiaryTitle = diaryTitle;
+			draftFontSizeCqw = fontSizeCqw;
+			draftJournalFont = journalFont as JournalFont;
+		}
+	});
+});
+
 // Settings overlay
 let prevSpreadState: SpreadState | null = $state(null);
 const FONT_STEPS = [2.4, 2.8, 3.2, 3.6, 4.0, 4.4];
@@ -282,7 +288,6 @@ let textareaEl: HTMLTextAreaElement | null = $state(null);
 let rightTextareaEl: HTMLTextAreaElement | null = $state(null);
 let measureEl: HTMLTextAreaElement | null = null;
 let pendingCursorRestore: { absPos: number; side: 'left' | 'right' } | null = null;
-let activeEditor: 'left' | 'right' | null = $state(null);
 let spellsOpen = $state(true);
 
 $effect(() => {
@@ -487,7 +492,6 @@ $effect(() => {
 						<div class="h-full w-full bg-transparent"></div>
 					{:else if spreadState.kind === 'entry'}
 						{@const leftStart = entryPageSpread === 0 ? 0 : (splitPoints[entryPageSpread * 2 - 1] ?? 0)}
-						{@const leftEnd = splitPoints[entryPageSpread * 2]}
 						<div class="relative h-full">
 							<button
 								type="button"
@@ -501,24 +505,15 @@ $effect(() => {
 								class="absolute top-5 right-8 z-10 page-top-link text-xs text-stone-400 tracking-wide hover:text-ornament-gold transition-colors"
 								aria-label="Turn to Today"
 							>Turn to today...</button>
-							{#if activeEditor !== 'left'}
-								<div
-									class="absolute inset-0 w-full overflow-hidden px-8 pt-12 pb-8 text-ink-900 leading-relaxed pointer-events-none whitespace-pre-wrap break-words"
-									style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
-								>
-									{@html renderMarkdown(leftEnd !== undefined ? content.slice(leftStart, leftEnd) : content.slice(leftStart))}
-								</div>
-							{/if}
 							<textarea
 								bind:this={textareaEl}
-								onfocus={() => { activeEditor = 'left'; }}
-								onblur={() => { activeEditor = null; }}
 								oninput={(e) => {
+									const leftEnd = splitPoints[entryPageSpread * 2];
 									pendingCursorRestore = { absPos: leftStart + e.currentTarget.selectionStart, side: 'left' };
 									const suffix = leftEnd !== undefined ? content.slice(leftEnd) : '';
 									content = content.slice(0, leftStart) + e.currentTarget.value + suffix;
 								}}
-								class={`absolute inset-0 w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent leading-relaxed outline-none relative ${activeEditor === 'left' ? 'text-ink-900 caret-ink-900' : 'text-transparent caret-transparent'}`}
+								class="absolute inset-0 h-full w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent leading-relaxed outline-none relative text-ink-900 caret-ink-900"
 								style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
 								placeholder="Begin writing…"
 							></textarea>
@@ -599,26 +594,16 @@ $effect(() => {
 							class="absolute top-5 left-1/2 -translate-x-1/2 z-10 page-top-link text-xs text-stone-400 tracking-wide hover:text-ornament-gold transition-colors"
 						>Recent entries</button>
 						{@const rightStart = splitPoints[entryPageSpread * 2]}
-						{@const rightEnd = splitPoints[entryPageSpread * 2 + 1]}
 						{#if rightStart !== undefined}
-							{#if activeEditor !== 'right'}
-								<div
-									class="absolute inset-0 w-full overflow-hidden px-8 pt-12 pb-8 text-ink-900 leading-relaxed pointer-events-none whitespace-pre-wrap break-words"
-									style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
-								>
-									{@html renderMarkdown(rightEnd !== undefined ? content.slice(rightStart, rightEnd) : content.slice(rightStart))}
-								</div>
-							{/if}
 							<textarea
 								bind:this={rightTextareaEl}
-								onfocus={() => { activeEditor = 'right'; }}
-								onblur={() => { activeEditor = null; }}
 								oninput={(e) => {
+									const rightEnd = splitPoints[entryPageSpread * 2 + 1];
 									pendingCursorRestore = { absPos: rightStart + e.currentTarget.selectionStart, side: 'right' };
 									const suffix = rightEnd !== undefined ? content.slice(rightEnd) : '';
 									content = content.slice(0, rightStart) + e.currentTarget.value + suffix;
 								}}
-								class={`absolute inset-0 w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent leading-relaxed outline-none relative ${activeEditor === 'right' ? 'text-ink-900 caret-ink-900' : 'text-transparent caret-transparent'}`}
+								class="absolute inset-0 h-full w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent leading-relaxed outline-none relative text-ink-900 caret-ink-900"
 								style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
 							></textarea>
 							{#if hasMoreContent}
@@ -662,7 +647,6 @@ $effect(() => {
 								<circle cx="18" cy="18" r="6" fill="#f5d87a"/>
 								<circle cx="18" cy="18" r="3.5" fill="#e8c63e"/>
 							</svg>
-							<span class="spell-flower-label">magic spells</span>
 						</button>
 						{#if spellsOpen}
 							<div class="spell-panel-content">
@@ -922,21 +906,7 @@ $effect(() => {
 		cursor: pointer;
 		padding: 0;
 		display: flex;
-transition: transform 0.25s ease;
 		flex-shrink: 0;
-	}
-
-	.spell-flower:hover {
-		transform: scale(1.12) rotate(10deg);
-	}
-
-	.spell-flower-label {
-		font-family: 'EB Garamond', Georgia, serif;
-		font-size: 0.72rem;
-		color: #a0936f;
-		font-style: italic;
-		letter-spacing: 0.04em;
-		white-space: nowrap;
 	}
 
 	/* ── Markdown formatting ──────────────────────────────────────────────── */
