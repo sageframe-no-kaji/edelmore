@@ -508,10 +508,6 @@ $effect(() => {
 					{#if spreadState.kind === 'settings'}
 						<div class="absolute inset-0 px-8 pt-10 pb-8 overflow-hidden font-serif">
 							<div class="flex h-full flex-col">
-								{#if settingsWarning}
-									<span class="settings-warning-text">{settingsWarningText}</span>
-								{/if}
-
 								<div class="flex-1 space-y-7">
 									<section>
 										<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Display Name</p>
@@ -553,8 +549,11 @@ $effect(() => {
 								</div>
 
 								<div class="mt-8 flex items-end justify-end gap-3">
+									{#if settingsWarning}
+										<span class="settings-warning-text">{settingsWarningText}</span>
+									{/if}
 									<button type="button" onclick={closeSettings} class="settings-back-link">← Back</button>
-									<button type="button" onclick={saveSettings} disabled={!settingsDirty || savingSettings} class="settings-save-btn">{savingSettings ? 'Saving…' : 'Save'}</button>
+									<button type="button" onclick={saveSettings} disabled={!settingsDirty || savingSettings} class="settings-save-link">{savingSettings ? 'Saving…' : 'Save'}</button>
 								</div>
 							</div>
 						</div>
@@ -659,10 +658,6 @@ $effect(() => {
 			<TocPage entries={entryDatePreviews} onNavigate={navigateTo} />
 		{:else if spreadState.kind === 'settings'}
 			<div class="flex-1 flex flex-col bg-[#fdf6e3] overflow-auto px-6 py-6 font-serif">
-				{#if settingsWarning}
-					<span class="settings-warning-text">{settingsWarningText}</span>
-				{/if}
-
 				<div class="space-y-6">
 					<section>
 						<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Display Name</p>
@@ -706,8 +701,11 @@ $effect(() => {
 				</div>
 
 				<div class="mt-8 flex items-end justify-end gap-3">
+					{#if settingsWarning}
+						<span class="settings-warning-text">{settingsWarningText}</span>
+					{/if}
 					<button type="button" onclick={closeSettings} class="settings-back-link">← Back</button>
-					<button type="button" onclick={saveSettings} disabled={!settingsDirty || savingSettings} class="settings-save-btn">{savingSettings ? 'Saving…' : 'Save'}</button>
+					<button type="button" onclick={saveSettings} disabled={!settingsDirty || savingSettings} class="settings-save-link">{savingSettings ? 'Saving…' : 'Save'}</button>
 				</div>
 			</div>
 			{:else if spreadState.kind === 'backCover'}
@@ -745,26 +743,31 @@ $effect(() => {
 			0 -1px 0 rgba(0, 0, 0, 0.25);
 	}
 
-	.settings-save-btn {
-		min-width: 5.25rem;
-		border: 1px solid #c4a96d;
-		border-radius: 9999px;
-		padding: 0.45rem 1rem;
-		font-family: 'EB Garamond', Georgia, serif;
-		font-size: 0.95rem;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
+	.settings-warning-text {
+		font-family: 'Rouge Script', cursive;
+		font-size: 1.35rem;
 		color: #8b6914;
-		background: rgba(60, 39, 13, 0.06);
-		transition: background 0.15s, color 0.15s, opacity 0.15s;
+		text-align: left;
+		margin-right: auto;
+		text-shadow:
+			0 1px 2px rgba(255, 250, 230, 0.45),
+			0 -1px 0 rgba(0, 0, 0, 0.25);
 	}
 
-	.settings-save-btn:not(:disabled):hover {
-		background: #c4a96d;
-		color: #1e1610;
+	.settings-save-link {
+		font-family: 'Rouge Script', cursive;
+		font-size: 1.6rem;
+		color: #8b6914;
+		background: transparent;
+		border: none;
+		padding: 0;
+		text-shadow:
+			0 1px 2px rgba(255, 250, 230, 0.45),
+			0 -1px 0 rgba(0, 0, 0, 0.25);
+		transition: opacity 0.15s;
 	}
 
-	.settings-save-btn:disabled {
+	.settings-save-link:disabled {
 		opacity: 0.35;
 		cursor: default;
 	}

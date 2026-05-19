@@ -67,7 +67,7 @@ const {
 
   .title-block {
     position: absolute;
-    left: 56%;
+    left: 54%;
     top: 50%;
     width: 62%;
     transform: translate(-50%, -50%);
