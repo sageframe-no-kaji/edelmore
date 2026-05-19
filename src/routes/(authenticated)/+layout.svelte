@@ -269,6 +269,16 @@ let textareaEl: HTMLTextAreaElement | null = $state(null);
 let rightTextareaEl: HTMLTextAreaElement | null = $state(null);
 let measureEl: HTMLTextAreaElement | null = null;
 let pendingCursorRestore: { absPos: number; side: 'left' | 'right' } | null = null;
+let spellsOpen = $state(true);
+
+$effect(() => {
+	const stored = localStorage.getItem('edelmore-spells-open');
+	if (stored !== null) spellsOpen = stored === 'true';
+});
+
+$effect(() => {
+	localStorage.setItem('edelmore-spells-open', String(spellsOpen));
+});
 
 const entrySpreadCount = $derived(Math.floor(splitPoints.length / 2) + 1);
 const hasMoreContent = $derived(entryPageSpread < entrySpreadCount - 1);
@@ -433,7 +443,7 @@ $effect(() => {
 	<!-- Desktop: CSS 3D Spread -->
 	<div
 		role="presentation"
-		class="hidden md:flex flex-1 items-center justify-center p-8"
+		class="hidden md:flex flex-1 items-center justify-center px-8 py-0"
 		ontouchstart={(e) => { (e.currentTarget as HTMLElement).dataset.touchX = String(e.touches[0].clientX); }}
 		ontouchend={(e) => {
 			const startX = Number((e.currentTarget as HTMLElement).dataset.touchX ?? 0);
@@ -441,7 +451,7 @@ $effect(() => {
 			if (Math.abs(delta) > 50) { if (delta < 0 && canFlipNext) onFlipNext(); else if (delta > 0 && canFlipPrev) onFlipPrev(); }
 		}}
 	>
-		<div class="relative w-full max-w-5xl aspect-[3/2] max-h-[80vh]" style="--page-font-size: {draftFontSizeCqw}cqw">
+		<div class="relative w-full max-w-5xl aspect-[3/2] max-h-[calc(100vh-4rem)]" style="--page-font-size: {draftFontSizeCqw}cqw">
 			<Spread
 				{onFlipPrev}
 				{onFlipNext}
@@ -595,6 +605,71 @@ $effect(() => {
 				{/snippet}
 			</Spread>
 		</div>
+
+		<!-- Magic Spells Panel — appears below the book -->
+		{#if spreadState.kind === 'entry'}
+			<div class="spell-anchor">
+				{#if spellsOpen}
+					<div class="spell-panel" role="note" aria-label="Magic writing spells">
+						<div class="spell-panel-content">
+							<p class="spell-title">✨ Magic Writing Spells</p>
+							<ul class="spell-list">
+								<li><span class="spell-code">*word*</span> soft and quiet</li>
+								<li><span class="spell-code">**word**</span> strong and loud</li>
+								<li><span class="spell-code">__word__</span> extra important</li>
+								<li><span class="spell-code">~~word~~</span> crossed out like magic</li>
+							</ul>
+						</div>
+						<button
+							type="button"
+							class="spell-flower"
+							onclick={() => { spellsOpen = !spellsOpen; }}
+							aria-label="Close magic writing spells"
+							aria-expanded={spellsOpen}
+						>
+							<svg width="40" height="40" viewBox="0 0 36 36" aria-hidden="true">
+								<g opacity="0.82">
+									<ellipse cx="18" cy="8" rx="4" ry="7" fill="#d4b0cc"/>
+									<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(45 18 18)" fill="#c9a8c6"/>
+									<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(90 18 18)" fill="#d4b0cc"/>
+									<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(135 18 18)" fill="#c9a8c6"/>
+									<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(180 18 18)" fill="#d4b0cc"/>
+									<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(225 18 18)" fill="#c9a8c6"/>
+									<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(270 18 18)" fill="#d4b0cc"/>
+									<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(315 18 18)" fill="#c9a8c6"/>
+								</g>
+								<circle cx="18" cy="18" r="6" fill="#f5d87a"/>
+								<circle cx="18" cy="18" r="3.5" fill="#e8c63e"/>
+							</svg>
+						</button>
+					</div>
+				{:else}
+					<button
+						type="button"
+						class="spell-flower spell-flower-collapsed"
+						onclick={() => { spellsOpen = !spellsOpen; }}
+						aria-label="Open magic writing spells"
+						aria-expanded={spellsOpen}
+					>
+						<svg width="40" height="40" viewBox="0 0 36 36" aria-hidden="true">
+							<g opacity="0.82">
+								<ellipse cx="18" cy="8" rx="4" ry="7" fill="#d4b0cc"/>
+								<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(45 18 18)" fill="#c9a8c6"/>
+								<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(90 18 18)" fill="#d4b0cc"/>
+								<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(135 18 18)" fill="#c9a8c6"/>
+								<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(180 18 18)" fill="#d4b0cc"/>
+								<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(225 18 18)" fill="#c9a8c6"/>
+								<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(270 18 18)" fill="#d4b0cc"/>
+								<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(315 18 18)" fill="#c9a8c6"/>
+							</g>
+							<circle cx="18" cy="18" r="6" fill="#f5d87a"/>
+							<circle cx="18" cy="18" r="3.5" fill="#e8c63e"/>
+						</svg>
+						<span class="spell-flower-label">magic spells ✨</span>
+					</button>
+				{/if}
+			</div>
+		{/if}
 	</div>
 
 	<!-- Mobile: single page with nav buttons -->
@@ -770,6 +845,104 @@ $effect(() => {
 	.settings-save-link:disabled {
 		opacity: 0.35;
 		cursor: default;
+	}
+
+	/* ── Magic Spells flower ─────────────────────────────────────────────── */
+
+	.spell-anchor {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		width: 100%;
+		max-width: 64rem;
+		margin-top: 0.7rem;
+	}
+
+	.spell-panel {
+		background: #fefcf7;
+		border: 1px solid #dfc9a4;
+		border-radius: 0.4rem;
+		padding: 0.9rem 1.2rem;
+		font-family: 'EB Garamond', Georgia, serif;
+		color: #4a3728;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
+		width: 100%;
+	}
+
+	.spell-panel-content {
+		display: flex;
+		align-items: baseline;
+		flex-wrap: wrap;
+		gap: 0.4rem 1.8rem;
+		flex: 1;
+	}
+
+	.spell-title {
+		font-size: 0.9rem;
+		color: #8b6914;
+		font-weight: 600;
+		white-space: nowrap;
+		margin: 0;
+	}
+
+	.spell-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: 0.3rem 1.5rem;
+		line-height: 1.5;
+		font-size: 0.9rem;
+	}
+
+	.spell-code {
+		font-family: 'Courier New', monospace;
+		font-size: 0.78rem;
+		color: #8b6914;
+		background: rgba(139, 105, 20, 0.08);
+		padding: 0 0.2rem;
+		border-radius: 2px;
+	}
+
+	.spell-flower {
+		background: none;
+		border: none;
+		cursor: pointer;
+		padding: 0;
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		transition: transform 0.25s ease;
+		flex-shrink: 0;
+	}
+
+	.spell-flower:hover {
+		transform: scale(1.12) rotate(10deg);
+	}
+
+	.spell-flower-collapsed {
+		flex-direction: column;
+		gap: 0.3rem;
+		padding: 0.4rem 0;
+	}
+
+	.spell-flower-collapsed:hover {
+		transform: scale(1.1) rotate(-10deg);
+	}
+
+	.spell-flower-label {
+		font-family: 'EB Garamond', Georgia, serif;
+		font-size: 0.65rem;
+		color: #a0936f;
+		font-style: italic;
+		letter-spacing: 0.04em;
+		white-space: nowrap;
 	}
 </style>
 
