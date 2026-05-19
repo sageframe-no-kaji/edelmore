@@ -74,6 +74,19 @@ $effect(() => {
   });
 });
 
+function renderMarkdown(text: string): string {
+	const escaped = text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;');
+
+	return escaped
+		.replace(/~~([^~]+)~~/g, '<s>$1</s>')
+		.replace(/\*\*([^\*]+)\*\*/g, '<strong>$1</strong>')
+		.replace(/__([^_]+)__/g, '<u>$1</u>')
+		.replace(/\*([^\*]+)\*/g, '<em>$1</em>');
+}
+
 // Autosave — fires only when content differs from what the server has.
 $effect(() => {
   const c = content;
@@ -269,6 +282,7 @@ let textareaEl: HTMLTextAreaElement | null = $state(null);
 let rightTextareaEl: HTMLTextAreaElement | null = $state(null);
 let measureEl: HTMLTextAreaElement | null = null;
 let pendingCursorRestore: { absPos: number; side: 'left' | 'right' } | null = null;
+let activeEditor: 'left' | 'right' | null = $state(null);
 let spellsOpen = $state(true);
 
 $effect(() => {
@@ -451,7 +465,7 @@ $effect(() => {
 			if (Math.abs(delta) > 50) { if (delta < 0 && canFlipNext) onFlipNext(); else if (delta > 0 && canFlipPrev) onFlipPrev(); }
 		}}
 	>
-		<div class="relative w-full max-w-5xl aspect-[3/2] max-h-[calc(100vh-4rem)]" style="--page-font-size: {draftFontSizeCqw}cqw">
+		<div class="relative w-full max-w-5xl aspect-[3/2]" style="--page-font-size: {draftFontSizeCqw}cqw">
 			<Spread
 				{onFlipPrev}
 				{onFlipNext}
@@ -487,14 +501,24 @@ $effect(() => {
 								class="absolute top-5 right-8 z-10 page-top-link text-xs text-stone-400 tracking-wide hover:text-ornament-gold transition-colors"
 								aria-label="Turn to Today"
 							>Turn to today...</button>
+							{#if activeEditor !== 'left'}
+								<div
+									class="absolute inset-0 w-full overflow-hidden px-8 pt-12 pb-8 text-ink-900 leading-relaxed pointer-events-none whitespace-pre-wrap break-words"
+									style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
+								>
+									{@html renderMarkdown(leftEnd !== undefined ? content.slice(leftStart, leftEnd) : content.slice(leftStart))}
+								</div>
+							{/if}
 							<textarea
 								bind:this={textareaEl}
+								onfocus={() => { activeEditor = 'left'; }}
+								onblur={() => { activeEditor = null; }}
 								oninput={(e) => {
 									pendingCursorRestore = { absPos: leftStart + e.currentTarget.selectionStart, side: 'left' };
 									const suffix = leftEnd !== undefined ? content.slice(leftEnd) : '';
 									content = content.slice(0, leftStart) + e.currentTarget.value + suffix;
 								}}
-								class="absolute inset-0 w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent text-ink-900 leading-relaxed outline-none"
+								class={`absolute inset-0 w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent leading-relaxed outline-none relative ${activeEditor === 'left' ? 'text-ink-900 caret-ink-900' : 'text-transparent caret-transparent'}`}
 								style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
 								placeholder="Begin writing…"
 							></textarea>
@@ -577,14 +601,24 @@ $effect(() => {
 						{@const rightStart = splitPoints[entryPageSpread * 2]}
 						{@const rightEnd = splitPoints[entryPageSpread * 2 + 1]}
 						{#if rightStart !== undefined}
+							{#if activeEditor !== 'right'}
+								<div
+									class="absolute inset-0 w-full overflow-hidden px-8 pt-12 pb-8 text-ink-900 leading-relaxed pointer-events-none whitespace-pre-wrap break-words"
+									style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
+								>
+									{@html renderMarkdown(rightEnd !== undefined ? content.slice(rightStart, rightEnd) : content.slice(rightStart))}
+								</div>
+							{/if}
 							<textarea
 								bind:this={rightTextareaEl}
+								onfocus={() => { activeEditor = 'right'; }}
+								onblur={() => { activeEditor = null; }}
 								oninput={(e) => {
 									pendingCursorRestore = { absPos: rightStart + e.currentTarget.selectionStart, side: 'right' };
 									const suffix = rightEnd !== undefined ? content.slice(rightEnd) : '';
 									content = content.slice(0, rightStart) + e.currentTarget.value + suffix;
 								}}
-								class="absolute inset-0 w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent text-ink-900 leading-relaxed outline-none"
+								class={`absolute inset-0 w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent leading-relaxed outline-none relative ${activeEditor === 'right' ? 'text-ink-900 caret-ink-900' : 'text-transparent caret-transparent'}`}
 								style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
 							></textarea>
 							{#if hasMoreContent}
@@ -604,27 +638,14 @@ $effect(() => {
 					{/if}
 				{/snippet}
 			</Spread>
-		</div>
-
-		<!-- Magic Spells Panel — appears below the book -->
-		{#if spreadState.kind === 'entry'}
-			<div class="spell-anchor">
-				{#if spellsOpen}
-					<div class="spell-panel" role="note" aria-label="Magic writing spells">
-						<div class="spell-panel-content">
-							<p class="spell-title">✨ Magic Writing Spells</p>
-							<ul class="spell-list">
-								<li><span class="spell-code">*word*</span> soft and quiet</li>
-								<li><span class="spell-code">**word**</span> strong and loud</li>
-								<li><span class="spell-code">__word__</span> extra important</li>
-								<li><span class="spell-code">~~word~~</span> crossed out like magic</li>
-							</ul>
-						</div>
+			{#if spreadState.kind === 'entry'}
+				<div class="spell-anchor">
+					<div class="spell-panel" role="note" aria-label="Magic writing spells" style={spellsOpen ? 'width: 100%;' : 'width: fit-content; padding: 0.5rem;'}>
 						<button
 							type="button"
 							class="spell-flower"
 							onclick={() => { spellsOpen = !spellsOpen; }}
-							aria-label="Close magic writing spells"
+							aria-label={spellsOpen ? 'Close magic writing spells' : 'Open magic writing spells'}
 							aria-expanded={spellsOpen}
 						>
 							<svg width="40" height="40" viewBox="0 0 36 36" aria-hidden="true">
@@ -641,35 +662,23 @@ $effect(() => {
 								<circle cx="18" cy="18" r="6" fill="#f5d87a"/>
 								<circle cx="18" cy="18" r="3.5" fill="#e8c63e"/>
 							</svg>
+							<span class="spell-flower-label">magic spells</span>
 						</button>
+						{#if spellsOpen}
+							<div class="spell-panel-content">
+								<p class="spell-title">✨ Magic Writing Spells</p>
+								<ul class="spell-list">
+									<li><span class="spell-code">*word*</span> soft and quiet</li>
+									<li><span class="spell-code">**word**</span> strong and loud</li>
+									<li><span class="spell-code">__word__</span> extra important</li>
+									<li><span class="spell-code">~~word~~</span> crossed out like magic</li>
+								</ul>
+							</div>
+						{/if}
 					</div>
-				{:else}
-					<button
-						type="button"
-						class="spell-flower spell-flower-collapsed"
-						onclick={() => { spellsOpen = !spellsOpen; }}
-						aria-label="Open magic writing spells"
-						aria-expanded={spellsOpen}
-					>
-						<svg width="40" height="40" viewBox="0 0 36 36" aria-hidden="true">
-							<g opacity="0.82">
-								<ellipse cx="18" cy="8" rx="4" ry="7" fill="#d4b0cc"/>
-								<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(45 18 18)" fill="#c9a8c6"/>
-								<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(90 18 18)" fill="#d4b0cc"/>
-								<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(135 18 18)" fill="#c9a8c6"/>
-								<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(180 18 18)" fill="#d4b0cc"/>
-								<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(225 18 18)" fill="#c9a8c6"/>
-								<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(270 18 18)" fill="#d4b0cc"/>
-								<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(315 18 18)" fill="#c9a8c6"/>
-							</g>
-							<circle cx="18" cy="18" r="6" fill="#f5d87a"/>
-							<circle cx="18" cy="18" r="3.5" fill="#e8c63e"/>
-						</svg>
-						<span class="spell-flower-label">magic spells ✨</span>
-					</button>
-				{/if}
-			</div>
-		{/if}
+				</div>
+			{/if}
+		</div>
 	</div>
 
 	<!-- Mobile: single page with nav buttons -->
@@ -850,38 +859,35 @@ $effect(() => {
 	/* ── Magic Spells flower ─────────────────────────────────────────────── */
 
 	.spell-anchor {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
+		position: absolute;
+		top: calc(100% + 0.6rem);
+		left: 0;
+		z-index: 30;
 		width: 100%;
-		max-width: 64rem;
-		margin-top: 0.7rem;
 	}
 
 	.spell-panel {
 		background: #fefcf7;
 		border: 1px solid #dfc9a4;
 		border-radius: 0.4rem;
-		padding: 0.9rem 1.2rem;
+		padding: 0.7rem 1rem;
 		font-family: 'EB Garamond', Georgia, serif;
 		color: #4a3728;
 		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
+		align-items: flex-start;
+		gap: 0.8rem;
 		box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
-		width: 100%;
+		max-width: none;
 	}
 
 	.spell-panel-content {
 		display: flex;
 		align-items: baseline;
-		flex-wrap: wrap;
-		gap: 0.4rem 1.8rem;
-		flex: 1;
+		gap: 0.8rem;
 	}
 
 	.spell-title {
+		display: none;
 		font-size: 0.9rem;
 		color: #8b6914;
 		font-weight: 600;
@@ -916,9 +922,7 @@ $effect(() => {
 		cursor: pointer;
 		padding: 0;
 		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-		transition: transform 0.25s ease;
+transition: transform 0.25s ease;
 		flex-shrink: 0;
 	}
 
@@ -926,23 +930,30 @@ $effect(() => {
 		transform: scale(1.12) rotate(10deg);
 	}
 
-	.spell-flower-collapsed {
-		flex-direction: column;
-		gap: 0.3rem;
-		padding: 0.4rem 0;
-	}
-
-	.spell-flower-collapsed:hover {
-		transform: scale(1.1) rotate(-10deg);
-	}
-
 	.spell-flower-label {
 		font-family: 'EB Garamond', Georgia, serif;
-		font-size: 0.65rem;
+		font-size: 0.72rem;
 		color: #a0936f;
 		font-style: italic;
 		letter-spacing: 0.04em;
 		white-space: nowrap;
+	}
+
+	/* ── Markdown formatting ──────────────────────────────────────────────── */
+	:global(em) {
+		font-style: italic;
+	}
+
+	:global(strong) {
+		font-weight: bold;
+	}
+
+	:global(u) {
+		text-decoration: underline;
+	}
+
+	:global(s) {
+		text-decoration: line-through;
 	}
 </style>
 
