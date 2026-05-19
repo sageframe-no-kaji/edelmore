@@ -74,6 +74,21 @@ $effect(() => {
   });
 });
 
+function renderMarkdown(text: string): string {
+	const escaped = text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;');
+
+	return escaped
+		.replace(/~~([^~]+)~~/g, '<s>$1</s>')
+		.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+		.replace(/__([^_]+)__/g, '<u>$1</u>')
+		.replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<u>$1</u>')
+		.replace(/(?<!~)~([^~\n]+)~(?!~)/g, '<s>$1</s>')
+		.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+}
+
 // Autosave — fires only when content differs from what the server has.
 $effect(() => {
   const c = content;
@@ -288,6 +303,7 @@ let textareaEl: HTMLTextAreaElement | null = $state(null);
 let rightTextareaEl: HTMLTextAreaElement | null = $state(null);
 let measureEl: HTMLTextAreaElement | null = null;
 let pendingCursorRestore: { absPos: number; side: 'left' | 'right' } | null = null;
+let activeEditor: 'left' | 'right' | null = $state(null);
 let spellsOpen = $state(true);
 
 $effect(() => {
@@ -470,7 +486,7 @@ $effect(() => {
 			if (Math.abs(delta) > 50) { if (delta < 0 && canFlipNext) onFlipNext(); else if (delta > 0 && canFlipPrev) onFlipPrev(); }
 		}}
 	>
-		<div class="relative w-full max-w-5xl aspect-[3/2]" style="--page-font-size: {draftFontSizeCqw}cqw">
+		<div class="book-shell relative w-full max-w-5xl aspect-[3/2]" style="--page-font-size: {draftFontSizeCqw}cqw">
 			<Spread
 				{onFlipPrev}
 				{onFlipNext}
@@ -492,6 +508,7 @@ $effect(() => {
 						<div class="h-full w-full bg-transparent"></div>
 					{:else if spreadState.kind === 'entry'}
 						{@const leftStart = entryPageSpread === 0 ? 0 : (splitPoints[entryPageSpread * 2 - 1] ?? 0)}
+						{@const leftEnd = splitPoints[entryPageSpread * 2]}
 						<div class="relative h-full">
 							<button
 								type="button"
@@ -505,15 +522,25 @@ $effect(() => {
 								class="absolute top-5 right-8 z-10 page-top-link text-xs text-stone-400 tracking-wide hover:text-ornament-gold transition-colors"
 								aria-label="Turn to Today"
 							>Turn to today...</button>
+							{#if activeEditor !== 'left'}
+								<div
+									class="absolute inset-0 w-full overflow-hidden px-8 pt-12 pb-8 text-ink-900 leading-relaxed pointer-events-none whitespace-pre-wrap break-words"
+									style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
+								>
+									{@html renderMarkdown(leftEnd !== undefined ? content.slice(leftStart, leftEnd) : content.slice(leftStart))}
+								</div>
+							{/if}
 							<textarea
 								bind:this={textareaEl}
+								onfocus={() => { activeEditor = 'left'; }}
+								onblur={() => { activeEditor = null; }}
 								oninput={(e) => {
 									const leftEnd = splitPoints[entryPageSpread * 2];
 									pendingCursorRestore = { absPos: leftStart + e.currentTarget.selectionStart, side: 'left' };
 									const suffix = leftEnd !== undefined ? content.slice(leftEnd) : '';
 									content = content.slice(0, leftStart) + e.currentTarget.value + suffix;
 								}}
-								class="absolute inset-0 h-full w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent leading-relaxed outline-none relative text-ink-900 caret-ink-900"
+								class={`absolute inset-0 h-full w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent leading-relaxed outline-none relative ${activeEditor === 'left' ? 'text-ink-900 caret-ink-900' : 'text-transparent caret-transparent'}`}
 								style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
 								placeholder="Begin writing…"
 							></textarea>
@@ -540,12 +567,12 @@ $effect(() => {
 								<div class="flex-1 space-y-7">
 									<section>
 										<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Display Name</p>
-										<input type="text" bind:value={draftUsername} maxlength="40" required class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors" />
+										<input type="text" bind:value={draftUsername} oninput={(e) => { draftUsername = e.currentTarget.value; }} maxlength="40" required class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors" />
 									</section>
 
 									<section>
 										<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Diary Title</p>
-										<input type="text" bind:value={draftDiaryTitle} maxlength="40" required class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors" />
+										<input type="text" bind:value={draftDiaryTitle} oninput={(e) => { draftDiaryTitle = e.currentTarget.value; }} maxlength="40" required class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors" />
 									</section>
 
 									<section>
@@ -594,16 +621,27 @@ $effect(() => {
 							class="absolute top-5 left-1/2 -translate-x-1/2 z-10 page-top-link text-xs text-stone-400 tracking-wide hover:text-ornament-gold transition-colors"
 						>Recent entries</button>
 						{@const rightStart = splitPoints[entryPageSpread * 2]}
+						{@const rightEnd = splitPoints[entryPageSpread * 2 + 1]}
 						{#if rightStart !== undefined}
+							{#if activeEditor !== 'right'}
+								<div
+									class="absolute inset-0 w-full overflow-hidden px-8 pt-12 pb-8 text-ink-900 leading-relaxed pointer-events-none whitespace-pre-wrap break-words"
+									style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
+								>
+									{@html renderMarkdown(rightEnd !== undefined ? content.slice(rightStart, rightEnd) : content.slice(rightStart))}
+								</div>
+							{/if}
 							<textarea
 								bind:this={rightTextareaEl}
+								onfocus={() => { activeEditor = 'right'; }}
+								onblur={() => { activeEditor = null; }}
 								oninput={(e) => {
 									const rightEnd = splitPoints[entryPageSpread * 2 + 1];
 									pendingCursorRestore = { absPos: rightStart + e.currentTarget.selectionStart, side: 'right' };
 									const suffix = rightEnd !== undefined ? content.slice(rightEnd) : '';
 									content = content.slice(0, rightStart) + e.currentTarget.value + suffix;
 								}}
-								class="absolute inset-0 h-full w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent leading-relaxed outline-none relative text-ink-900 caret-ink-900"
+								class={`absolute inset-0 h-full w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent leading-relaxed outline-none relative ${activeEditor === 'right' ? 'text-ink-900 caret-ink-900' : 'text-transparent caret-transparent'}`}
 								style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
 							></textarea>
 							{#if hasMoreContent}
@@ -625,7 +663,7 @@ $effect(() => {
 			</Spread>
 			{#if spreadState.kind === 'entry'}
 				<div class="spell-anchor">
-					<div class="spell-panel" role="note" aria-label="Magic writing spells" style={spellsOpen ? 'width: 100%;' : 'width: fit-content; padding: 0.5rem;'}>
+					<div class={`spell-panel ${spellsOpen ? 'is-open' : 'is-closed'}`} role="note" aria-label="Magic writing spells">
 						<button
 							type="button"
 							class="spell-flower"
@@ -633,7 +671,7 @@ $effect(() => {
 							aria-label={spellsOpen ? 'Close magic writing spells' : 'Open magic writing spells'}
 							aria-expanded={spellsOpen}
 						>
-							<svg width="40" height="40" viewBox="0 0 36 36" aria-hidden="true">
+							<svg width="16" height="16" viewBox="0 0 36 36" aria-hidden="true">
 								<g opacity="0.82">
 									<ellipse cx="18" cy="8" rx="4" ry="7" fill="#d4b0cc"/>
 									<ellipse cx="18" cy="8" rx="4" ry="7" transform="rotate(45 18 18)" fill="#c9a8c6"/>
@@ -648,17 +686,15 @@ $effect(() => {
 								<circle cx="18" cy="18" r="3.5" fill="#e8c63e"/>
 							</svg>
 						</button>
-						{#if spellsOpen}
-							<div class="spell-panel-content">
-								<p class="spell-title">✨ Magic Writing Spells</p>
-								<ul class="spell-list">
-									<li><span class="spell-code">*word*</span> soft and quiet</li>
-									<li><span class="spell-code">**word**</span> strong and loud</li>
-									<li><span class="spell-code">__word__</span> extra important</li>
-									<li><span class="spell-code">~~word~~</span> crossed out like magic</li>
-								</ul>
-							</div>
-						{/if}
+						<div class="spell-panel-content" aria-hidden={!spellsOpen}>
+							<p class="spell-title">✨ Magic Writing Spells</p>
+							<ul class="spell-list">
+								<li><span class="spell-code">*word*</span> <em>soft and quiet</em></li>
+								<li><span class="spell-code">**word**</span> <strong>strong and loud</strong></li>
+									<li><span class="spell-code">_word_ / __word__</span> <u>extra important</u></li>
+									<li><span class="spell-code">~word~ / ~~word~~</span> <s>crossed out</s></li>
+							</ul>
+						</div>
 					</div>
 				</div>
 			{/if}
@@ -729,12 +765,12 @@ $effect(() => {
 				<div class="space-y-6">
 					<section>
 						<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Display Name</p>
-						<input type="text" bind:value={draftUsername} maxlength="40" required class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none" />
+						<input type="text" bind:value={draftUsername} oninput={(e) => { draftUsername = e.currentTarget.value; }} maxlength="40" required class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none" />
 					</section>
 
 					<section>
 						<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Diary Title</p>
-						<input type="text" bind:value={draftDiaryTitle} maxlength="40" required class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none" />
+						<input type="text" bind:value={draftDiaryTitle} oninput={(e) => { draftDiaryTitle = e.currentTarget.value; }} maxlength="40" required class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none" />
 					</section>
 
 					<section>
@@ -851,23 +887,46 @@ $effect(() => {
 	}
 
 	.spell-panel {
+		--spell-collapsed-size: 5.2cqi;
 		background: #fefcf7;
 		border: 1px solid #dfc9a4;
-		border-radius: 0.4rem;
-		padding: 0.7rem 1rem;
+		border-radius: 1.45cqi;
+		padding: 0.6cqi;
 		font-family: 'EB Garamond', Georgia, serif;
 		color: #4a3728;
 		display: flex;
-		align-items: flex-start;
-		gap: 0.8rem;
+		align-items: center;
+		gap: 1cqi;
 		box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
 		max-width: none;
+		height: var(--spell-collapsed-size);
+		width: var(--spell-collapsed-size);
+		overflow: hidden;
+		transform-origin: left center;
+		transition: width 1s ease, padding 1s ease;
+	}
+
+	.spell-panel.is-open {
+		width: 100%;
+		padding: 0.6cqi 1.4cqi 0.6cqi 0.6cqi;
 	}
 
 	.spell-panel-content {
 		display: flex;
-		align-items: baseline;
-		gap: 0.8rem;
+		align-items: center;
+		gap: 1cqi;
+		min-width: 0;
+		overflow: hidden;
+		opacity: 0;
+		transform: translateX(-0.5rem);
+		pointer-events: none;
+		transition: opacity 0.45s ease 0.45s, transform 0.45s ease 0.45s;
+	}
+
+	.spell-panel.is-open .spell-panel-content {
+		opacity: 1;
+		transform: translateX(0);
+		pointer-events: auto;
 	}
 
 	.spell-title {
@@ -885,28 +944,49 @@ $effect(() => {
 		margin: 0;
 		display: flex;
 		flex-direction: row;
-		flex-wrap: wrap;
-		gap: 0.3rem 1.5rem;
-		line-height: 1.5;
-		font-size: 0.9rem;
+		flex-wrap: nowrap;
+		gap: 1.2cqi;
+		line-height: 2.05cqi;
+		font-size: 1.67cqi;
+		white-space: nowrap;
+	}
+
+	.spell-list li {
+		display: flex;
+		align-items: center;
+		gap: 0.6cqi;
 	}
 
 	.spell-code {
 		font-family: 'Courier New', monospace;
-		font-size: 0.78rem;
+		font-size: 1.55cqi;
 		color: #8b6914;
 		background: rgba(139, 105, 20, 0.08);
-		padding: 0 0.2rem;
+		padding: 0 0.4cqi;
 		border-radius: 2px;
 	}
 
+	.book-shell {
+		container-type: inline-size;
+	}
+
 	.spell-flower {
-		background: none;
+		background: transparent;
 		border: none;
+		border-radius: 0;
 		cursor: pointer;
-		padding: 0;
+		padding: 0.22cqi;
 		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 3.6cqi;
+		height: 3.6cqi;
 		flex-shrink: 0;
+	}
+
+	.spell-flower svg {
+		width: 100%;
+		height: 100%;
 	}
 
 	/* ── Markdown formatting ──────────────────────────────────────────────── */

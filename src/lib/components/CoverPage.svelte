@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { CoverConfig } from '$lib/covers.js';
+import { onMount } from 'svelte';
 
 type Props = {
   config: CoverConfig;
@@ -18,6 +19,37 @@ const {
   backCover = false,
   onOpenSettings,
 }: Props = $props();
+
+let titleBlockEl: HTMLDivElement | null = $state(null);
+let nameEl: HTMLParagraphElement | null = $state(null);
+let nameScale = $state(1);
+
+function fitCoverName() {
+  if (!titleBlockEl || !nameEl) return;
+  nameScale = 1;
+  requestAnimationFrame(() => {
+    if (!titleBlockEl || !nameEl) return;
+    const available = titleBlockEl.clientWidth * 0.92;
+    const required = nameEl.scrollWidth;
+    if (required <= 0) {
+      nameScale = 1;
+      return;
+    }
+    nameScale = required > available ? Math.max(0.55, available / required) : 1;
+  });
+}
+
+$effect(() => {
+  void username;
+  fitCoverName();
+});
+
+onMount(() => {
+  fitCoverName();
+  const ro = new ResizeObserver(() => fitCoverName());
+  if (titleBlockEl) ro.observe(titleBlockEl);
+  return () => ro.disconnect();
+});
 </script>
 
 <div class="cover">
@@ -26,8 +58,12 @@ const {
   {#if backCover}
     <a href="https://sageframe.net" class="press-link" target="_blank" rel="noreferrer">Sageframe Press</a>
   {:else}
-    <div class="title-block">
-      <p class="name">{username}</p>
+    <div class="title-block" bind:this={titleBlockEl}>
+      <p
+        bind:this={nameEl}
+        class="name"
+        style={`--cover-name-scale: ${nameScale};`}
+      >{username}</p>
       <p class="diary">{diaryTitle}</p>
       {#if showSettings}
         <button
@@ -69,7 +105,7 @@ const {
     position: absolute;
     left: 54%;
     top: 50%;
-    width: 62%;
+    width: 54%;
     transform: translate(-50%, -50%);
     z-index: 1;
     text-align: center;
@@ -82,13 +118,15 @@ const {
 
   .name {
     font-family: 'EB Garamond', Georgia, serif;
-    font-size: clamp(1.5rem, 11cqw, 5rem);
+    font-size: max(1.15rem, calc(8.2cqw * var(--cover-name-scale)));
     font-weight: 500;
-    letter-spacing: 0.28em;
+    letter-spacing: calc(0.12em * var(--cover-name-scale));
     padding-left: 0;
     text-transform: uppercase;
     margin: 0;
     line-height: 1;
+    max-inline-size: 100%;
+    white-space: nowrap;
     color: #c8a84b;
     text-shadow:
       0 1px 3px rgba(0, 0, 0, 0.9),
@@ -97,8 +135,8 @@ const {
 
   .diary {
     font-family: 'EB Garamond', Georgia, serif;
-    font-size: clamp(0.8rem, 4.4cqw, 2rem);
-    letter-spacing: 0.55em;
+    font-size: max(0.8rem, 3.8cqw);
+    letter-spacing: 0.24em;
     padding-left: 0;
     margin: 0;
     line-height: 1;
