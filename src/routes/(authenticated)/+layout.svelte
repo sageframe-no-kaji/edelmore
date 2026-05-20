@@ -1029,16 +1029,18 @@ $effect(() => {
 		pointer-events: none;
 	}
 
-	/* Back endpaper: label fills the whole page, text overlaid */
+	/* Back endpaper: label centered at 1/3 page size */
 	.back-label-sticker {
 		position: absolute;
-		inset: 0;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		width: 33%;
 	}
 
 	.back-label-img {
 		width: 100%;
-		height: 100%;
-		object-fit: fill;
+		height: auto;
 		display: block;
 		pointer-events: none;
 	}
