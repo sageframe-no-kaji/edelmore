@@ -544,7 +544,7 @@ $effect(() => {
 				overhangRem={flipOverhangRem}
 				hideLeftPage={spreadState.kind === 'cover'}
 				hideRightPage={spreadState.kind === 'backCover'}
-				noBackground={spreadState.kind === 'frontEndpaper' || spreadState.kind === 'backEndpaper'}
+				noBackground={spreadState.kind === 'frontEndpaper' || spreadState.kind === 'backEndpaper' || spreadState.kind === 'cover' || spreadState.kind === 'backCover'}
 			>
 				{#snippet leftPage()}
 					{#if spreadState.kind === 'cover'}
@@ -779,7 +779,7 @@ $effect(() => {
 									<li><span class="spell-code">~word~</span> <s>crossed out</s></li>
 							</ul>
 							<button type="button" onclick={openSettings} class="spell-settings" aria-label="Settings">
-								<img src="/edelweiss.svg" style="width: 1.55cqi; height: auto" alt="" />
+								<img src="/edelweiss.svg" style="width: 100%; height: 100%; object-fit: contain" alt="" />
 							</button>
 							</div>
 					</div>
@@ -1029,13 +1029,14 @@ $effect(() => {
 		pointer-events: none;
 	}
 
-	/* Back endpaper: label centered at 40% page width */
+	/* Back endpaper: label centered at 40% page width; text scales with sticker */
 	.back-label-sticker {
 		position: absolute;
 		top: 50%;
 		left: 50%;
 		transform: translate(-50%, -50%);
 		width: 40%;
+		container-type: inline-size;
 	}
 
 	.back-label-img {
@@ -1047,29 +1048,29 @@ $effect(() => {
 
 	.back-label-text {
 		position: absolute;
-		inset: 18% 10% 10% 10%;
+		inset: 12% 8% 8% 8%;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
 		text-align: center;
-		gap: 2px;
+		gap: 0.8cqi;
 		overflow: hidden;
 	}
 
 	.ep-about-section {
 		font-family: 'EB Garamond', Georgia, serif;
-		font-size: 10px;
+		font-size: 4.5cqi;
 		color: #6a4a28;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
-		margin: 0 0 2px;
+		margin: 0 0 0.5cqi;
 		flex-shrink: 0;
 	}
 
 	.ep-about-title {
 		font-family: 'Rouge Script', cursive;
-		font-size: 24px;
+		font-size: 12cqi;
 		color: #3a2510;
 		font-weight: 400;
 		line-height: 1.0;
@@ -1079,18 +1080,18 @@ $effect(() => {
 
 	.ep-about-subtitle {
 		font-family: 'EB Garamond', Georgia, serif;
-		font-size: 9px;
+		font-size: 4cqi;
 		color: #6a4a28;
 		font-style: italic;
-		margin: 0 0 4px;
+		margin: 0 0 1cqi;
 		flex-shrink: 0;
 	}
 
 	.ep-about-body {
 		font-family: 'EB Garamond', Georgia, serif;
-		font-size: 9px;
+		font-size: 4cqi;
 		color: #4a3520;
-		line-height: 1.5;
+		line-height: 1.4;
 		margin: 0;
 		flex-shrink: 0;
 	}
@@ -1145,9 +1146,10 @@ $effect(() => {
 	.spell-anchor {
 		position: absolute;
 		top: calc(100% + 0.6rem);
-		left: 0;
+		left: 50%;
+		transform: translateX(-50%);
 		z-index: 30;
-		width: 100%;
+		width: 93%;
 	}
 
 	.spell-panel {
@@ -1236,12 +1238,15 @@ $effect(() => {
 		background: transparent;
 		border: none;
 		cursor: pointer;
-		padding: 0 0.3cqi;
+		padding: 0.22cqi;
 		opacity: 0.65;
 		margin-left: auto;
 		flex-shrink: 0;
 		display: flex;
 		align-items: center;
+		justify-content: center;
+		width: 3.6cqi;
+		height: 3.6cqi;
 	}
 
 	.spell-settings:hover {
