@@ -19,6 +19,9 @@ type Props = {
   // When true the right page is invisible but still occupies its layout space,
   // so the left page stays on the left (used for the back-cover view).
   hideRightPage?: boolean;
+  // When true: spread and page backgrounds are transparent so the leather
+  // frame (edge.png) shows through the ragged clip-path gaps on endpapers.
+  noBackground?: boolean;
   leftPage?: Snippet;
   rightPage?: Snippet;
 };
@@ -35,13 +38,14 @@ const {
   overhangRem = 0,
   hideLeftPage = false,
   hideRightPage = false,
+  noBackground = false,
   leftPage,
   rightPage,
 }: Props = $props();
 </script>
 
 <div class="spread-container">
-	<div class="spread" class:is-cover-spread={hideLeftPage || hideRightPage}>
+	<div class="spread" class:is-cover-spread={hideLeftPage || hideRightPage} class:no-background={noBackground}>
 		<!-- Left page -->
 		<div class="page page-left" style={hideLeftPage ? 'visibility:hidden;background:transparent;border-right:none;box-shadow:none' : ''}>
 			{#if leftPage}{@render leftPage()}{/if}
@@ -105,6 +109,16 @@ const {
 	.spread.is-cover-spread {
 		background: transparent;
 		box-shadow: none;
+	}
+
+	/* Endpaper mode: let leather show through clip-path gaps */
+	.spread.no-background {
+		background: transparent;
+		box-shadow: none;
+	}
+
+	.spread.no-background .page {
+		background: transparent;
 	}
 
 	.page {

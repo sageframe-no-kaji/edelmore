@@ -544,6 +544,7 @@ $effect(() => {
 				overhangRem={flipOverhangRem}
 				hideLeftPage={spreadState.kind === 'cover'}
 				hideRightPage={spreadState.kind === 'backCover'}
+				noBackground={spreadState.kind === 'frontEndpaper' || spreadState.kind === 'backEndpaper'}
 			>
 				{#snippet leftPage()}
 					{#if spreadState.kind === 'cover'}
@@ -551,11 +552,11 @@ $effect(() => {
 					{:else if spreadState.kind === 'frontEndpaper'}
 						<div class="endpaper-fill endpaper-fill-left">
 							<div class="endpaper-plate-wrap">
-								<ExLibrisPage username={username} />
+								<ExLibrisPage username={username} transparent={true} />
 							</div>
 						</div>
 					{:else if spreadState.kind === 'toc'}
-						<!-- blank — ex-libris is on the frontEndpaper spread now -->
+						<ExLibrisPage username={username} />
 					{:else if spreadState.kind === 'settings'}
 						<div class="h-full w-full bg-transparent"></div>
 					{:else if spreadState.kind === 'backEndpaper'}
@@ -611,15 +612,7 @@ $effect(() => {
 					{/if}
 				{/snippet}
 				{#snippet rightPage()}
-					<!-- edelweiss settings shortcut — entry and toc only -->
-					{#if spreadState.kind === 'entry' || spreadState.kind === 'toc'}
-						<button
-							type="button"
-							onclick={openSettings}
-								class="absolute top-4 right-5 z-20 opacity-70"
-							aria-label="Settings"
-						><img src="/edelweiss.svg" style="width: 1.6rem; height: auto" alt="" /></button>
-					{/if}
+					<!-- settings button moved to spell panel ribbon -->
 
 					{#if spreadState.kind === 'settings'}
 						<div class="absolute inset-0 px-8 pt-10 pb-8 overflow-hidden font-serif">
@@ -715,17 +708,19 @@ $effect(() => {
 						<TocPage entries={entryDatePreviews} onNavigate={navigateTo} />
 					{:else if spreadState.kind === 'cover'}
 						<div role="presentation" class="h-full w-full cursor-pointer" onclick={onFlipNext}>
-							<CoverPage config={activeCover} {username} {diaryTitle} showSettings={true} onOpenSettings={openSettings} />
+							<CoverPage config={activeCover} {username} {diaryTitle} showSettings={false} onOpenSettings={openSettings} />
 						</div>
 					{:else if spreadState.kind === 'backEndpaper'}
-						<div class="endpaper-fill endpaper-fill-right endpaper-label-page">
-							<img src="/label.png" alt="" aria-hidden="true" class="back-endpaper-label-img" />
-							<div class="back-endpaper-about">
-								<p class="ep-about-title">Edelmore</p>
-								<p class="ep-about-body">A private diary shaped like a book.</p>
-								<p class="ep-about-body">Made for Iona and Isla, and now for anyone else who wants a quiet place that belongs to them — by their dad, Andrew Marcus.</p>
-								<p class="ep-about-body">The book opens to today's page. It saves itself. It listens when your hands are tired. Nobody reads it but the person writing in it.</p>
-								<p class="ep-about-body">Built on the principles of Universal Design for Learning. Runs on a small computer at home.</p>
+						<div class="endpaper-fill endpaper-fill-right">
+							<div class="back-label-sticker">
+								<img src="/label.png" alt="" aria-hidden="true" class="back-label-img" />
+								<div class="back-label-text">
+									<p class="ep-about-title">Edelmore</p>
+									<p class="ep-about-body">A private diary shaped like a book.</p>
+									<p class="ep-about-body">Made for Iona and Isla — and anyone else who wants a quiet place that belongs to them — by their dad, Andrew Marcus.</p>
+									<p class="ep-about-body">Opens to today. Saves itself. Listens when your hands are tired.</p>
+									<p class="ep-about-body">Built on Universal Design for Learning. Runs at home.</p>
+								</div>
 							</div>
 						</div>
 					{/if}
@@ -766,6 +761,9 @@ $effect(() => {
 									<li><span class="spell-code">_word_</span> <u>extra important</u></li>
 									<li><span class="spell-code">~word~</span> <s>crossed out</s></li>
 							</ul>
+							<button type="button" onclick={openSettings} class="spell-settings" aria-label="Settings">
+								<img src="/edelweiss.svg" style="width: 1.55cqi; height: auto" alt="" />
+							</button>
 							</div>
 					</div>
 				</div>
@@ -998,43 +996,51 @@ $effect(() => {
 		pointer-events: none;
 	}
 
-	/* Label + about text layout on back endpaper right page */
-	.endpaper-label-page {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 2.5cqw;
-		padding: 10% 12%;
+	/* Back endpaper: label sticker with text overlaid inside it */
+	.back-label-sticker {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		width: 70%;
 	}
 
-	.back-endpaper-label-img {
-		width: 35%;
+	.back-label-img {
+		width: 100%;
 		height: auto;
 		display: block;
 		pointer-events: none;
 	}
 
-	.back-endpaper-about {
+	.back-label-text {
+		position: absolute;
+		inset: 22% 12% 14% 12%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
 		text-align: center;
-		max-width: 90%;
+		gap: 0.3cqw;
+		overflow: hidden;
 	}
 
 	.ep-about-title {
 		font-family: 'Rouge Script', cursive;
-		font-size: 3.5cqw;
+		font-size: 4.5cqw;
 		color: #3a2510;
 		font-weight: 400;
-		line-height: 1.1;
-		margin: 0 0 0.8cqw;
+		line-height: 1.0;
+		margin: 0 0 0.6cqw;
+		flex-shrink: 0;
 	}
 
 	.ep-about-body {
 		font-family: 'EB Garamond', Georgia, serif;
-		font-size: 1.3cqw;
+		font-size: 1.25cqw;
 		color: #4a3520;
-		line-height: 1.6;
-		margin: 0 0 0.6cqw;
+		line-height: 1.5;
+		margin: 0;
+		flex-shrink: 0;
 	}
 
 	/* ── Shell stack suppression for endpaper states ────────────────────── */
@@ -1147,25 +1153,41 @@ $effect(() => {
 		display: flex;
 		flex-direction: row;
 		flex-wrap: nowrap;
-		gap: 1.2cqi;
-		line-height: 2.05cqi;
-		font-size: 1.67cqi;
+		gap: 1.0cqi;
+		line-height: 1.8cqi;
+		font-size: 1.42cqi;
 		white-space: nowrap;
 	}
 
 	.spell-list li {
 		display: flex;
 		align-items: center;
-		gap: 0.6cqi;
+		gap: 0.5cqi;
 	}
 
 	.spell-code {
 		font-family: 'Courier New', monospace;
-		font-size: 1.55cqi;
+		font-size: 1.3cqi;
 		color: #8b6914;
 		background: rgba(139, 105, 20, 0.08);
 		padding: 0 0.4cqi;
 		border-radius: 2px;
+	}
+
+	.spell-settings {
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		padding: 0 0.3cqi;
+		opacity: 0.65;
+		margin-left: auto;
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+	}
+
+	.spell-settings:hover {
+		opacity: 1;
 	}
 
 	.book-frame {

@@ -1,9 +1,9 @@
 <script lang="ts">
-type Props = { username: string };
-const { username }: Props = $props();
+type Props = { username: string; transparent?: boolean };
+const { username, transparent = false }: Props = $props();
 </script>
 
-<div class="page">
+<div class="page" class:transparent>
   <!-- Parchment grain -->
   <svg class="abs-fill" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
     <defs>
@@ -52,6 +52,10 @@ const { username }: Props = $props();
     width: 100%;
     height: 100%;
     background: #f0e5cc;
+  }
+
+  .page.transparent {
+    background: transparent;
     display: flex;
     align-items: center;
     justify-content: center;
