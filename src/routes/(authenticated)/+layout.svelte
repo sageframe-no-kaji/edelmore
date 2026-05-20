@@ -257,8 +257,9 @@ function computePrevZonePct(): number {
     spreadState.kind === 'settings' ||
     spreadState.kind === 'backEndpaper' ||
     spreadState.kind === 'frontEndpaper';
-  if (isEndpaperOrModal) return 20;
-  return 4;
+  if (isEndpaperOrModal) return 10;
+  // Entry/TOC: 15% covers the outer margin without reaching the writing area.
+  return 15;
 }
 const prevZonePct = $derived(computePrevZonePct());
 function computeNextZonePct(): number {
@@ -268,8 +269,8 @@ function computeNextZonePct(): number {
     spreadState.kind === 'settings' ||
     spreadState.kind === 'backEndpaper' ||
     spreadState.kind === 'frontEndpaper';
-  if (isEndpaperOrModal) return 20;
-  return 4;
+  if (isEndpaperOrModal) return 10;
+  return 15;
 }
 const nextZonePct = $derived(computeNextZonePct());
 const flipOverhangRem = $derived(spreadIndex === 0 ? 0 : 4);
@@ -541,12 +542,6 @@ $effect(() => {
 		}}
 	>
 		<div class="book-frame relative w-full max-w-5xl aspect-[331/194]" class:is-closed={spreadState.kind === 'cover' || spreadState.kind === 'backCover'}>
-			{#if canFlipPrev}
-				<button type="button" class="outside-flip outside-flip-prev" aria-label="Previous page" onclick={onFlipPrev}></button>
-			{/if}
-			{#if canFlipNext}
-				<button type="button" class="outside-flip outside-flip-next" aria-label="Next page" onclick={onFlipNext}></button>
-			{/if}
 		<div
 				class="book-shell"
 				class:is-closed={spreadState.kind === 'cover' || spreadState.kind === 'backCover'}
@@ -1059,7 +1054,7 @@ $effect(() => {
 		top: 50%;
 		left: 50%;
 		transform: translate(-50%, -50%);
-		width: 50%;
+		width: 65%;
 		container-type: inline-size;
 	}
 
@@ -1276,34 +1271,6 @@ $effect(() => {
 		/* spell-anchor uses cqi units; book-frame is its container since AT-01
 		   moved spell-anchor out of book-shell. */
 		container-type: inline-size;
-	}
-
-	/* Outside-book flip zones — sit in the gutters beside the book frame.
-	   They are absolutely positioned so they never affect layout flow or
-	   overlap the page content where the child types. */
-	.outside-flip {
-		position: absolute;
-		top: 0;
-		bottom: 0;
-		/* Half the book-frame width on each side */
-		width: 50%;
-		z-index: 20;
-		background: transparent;
-		border: none;
-		padding: 0;
-		cursor: pointer;
-	}
-
-	.outside-flip-prev {
-		/* Sits entirely to the LEFT of the book frame */
-		right: 100%;
-		left: auto;
-	}
-
-	.outside-flip-next {
-		/* Sits entirely to the RIGHT of the book frame */
-		left: 100%;
-		right: auto;
 	}
 
 	.book-frame.is-closed {
