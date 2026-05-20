@@ -16,6 +16,9 @@ type Props = {
   // When true the left page is invisible but still occupies its layout space,
   // so the right page stays on the right (used for the closed-book cover view).
   hideLeftPage?: boolean;
+  // When true the right page is invisible but still occupies its layout space,
+  // so the left page stays on the left (used for the back-cover view).
+  hideRightPage?: boolean;
   leftPage?: Snippet;
   rightPage?: Snippet;
 };
@@ -31,20 +34,21 @@ const {
   nextZonePct = 0,
   overhangRem = 0,
   hideLeftPage = false,
+  hideRightPage = false,
   leftPage,
   rightPage,
 }: Props = $props();
 </script>
 
 <div class="spread-container">
-	<div class="spread">
+	<div class="spread" class:is-cover-spread={hideLeftPage || hideRightPage}>
 		<!-- Left page -->
-		<div class="page page-left" style={hideLeftPage ? 'visibility:hidden;background:transparent;border-right:none' : ''}>
+		<div class="page page-left" style={hideLeftPage ? 'visibility:hidden;background:transparent;border-right:none;box-shadow:none' : ''}>
 			{#if leftPage}{@render leftPage()}{/if}
 		</div>
 
 		<!-- Right page -->
-		<div class="page page-right" style={hideLeftPage ? 'background:transparent' : ''}>
+		<div class="page page-right" style={hideRightPage ? 'visibility:hidden;background:transparent;box-shadow:none' : (hideLeftPage ? 'background:transparent;box-shadow:none' : '')}>
 			{#if rightPage}{@render rightPage()}{/if}
 		</div>
 
@@ -89,22 +93,34 @@ const {
 		width: 100%;
 		height: 100%;
 		display: flex;
+		box-shadow:
+			0 5px 24px rgba(0, 0, 0, 0.28),
+			0 2px 6px  rgba(0, 0, 0, 0.18),
+			0 1px 2px  rgba(0, 0, 0, 0.10);
+	}
+
+	/* Cover and back-cover: kill all shadows — transparent left page bleeds the shadow */
+	.spread.is-cover-spread {
+		box-shadow: none;
 	}
 
 	.page {
 		flex: 1;
 		position: relative;
 		overflow: hidden;
-		background: #ede4c2;
+		background: #e8ddb5;
 		container-type: inline-size;
-		box-shadow: inset 0 0 80px rgba(120, 80, 10, 0.07);
+		box-shadow:
+			inset 0 4px 14px rgba(60, 35, 5, 0.20),
+			inset 0 -4px 10px rgba(60, 35, 5, 0.14),
+			inset 0 -1px 0 rgba(100, 70, 20, 0.25);
 	}
 
 	.page::before {
 		content: '';
 		position: absolute;
 		inset: 0;
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65 0.55' numOctaves='4' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23p)' opacity='0.13'/%3E%3C/svg%3E");
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65 0.55' numOctaves='4' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23p)' opacity='0.16'/%3E%3C/svg%3E");
 		background-size: 300px 300px;
 		pointer-events: none;
 		z-index: 1;
@@ -115,14 +131,40 @@ const {
 		position: absolute;
 		inset: 0;
 		background:
-			radial-gradient(ellipse at 50% 0%, rgba(160, 110, 20, 0.07) 0%, transparent 65%),
-			radial-gradient(ellipse at 50% 100%, rgba(140, 95, 15, 0.05) 0%, transparent 55%);
+			radial-gradient(ellipse at 50% 0%,   rgba(160, 110, 20, 0.09) 0%, transparent 55%),
+			radial-gradient(ellipse at 50% 100%, rgba(140,  95, 15, 0.07) 0%, transparent 45%);
 		pointer-events: none;
 		z-index: 1;
 	}
 
+	/* Slightly different ragged vertical on each page — left page irregular at left edge */
 	.page-left {
-		border-right: 1px solid #d4c5a0;
+		border-right: 1px solid #c8b888;
+		clip-path: polygon(
+			0% 0%,
+			100% 0%,
+			100% 100%,
+			0% 100%,
+			2px 78%,
+			0% 58%,
+			3px 38%,
+			1px 18%,
+			0% 0%
+		);
+	}
+
+	/* Right page irregular at right edge */
+	.page-right {
+		clip-path: polygon(
+			0% 0%,
+			calc(100% - 1px) 0%,
+			100% 20%,
+			calc(100% - 2px) 42%,
+			100% 62%,
+			calc(100% - 3px) 82%,
+			100% 100%,
+			0% 100%
+		);
 	}
 
 	/* Click zones */

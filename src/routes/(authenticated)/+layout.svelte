@@ -543,7 +543,8 @@ $effect(() => {
 				{prevZonePct}
 				{nextZonePct}
 				overhangRem={flipOverhangRem}
-				hideLeftPage={spreadState.kind === 'cover' || spreadState.kind === 'backCover'}
+				hideLeftPage={spreadState.kind === 'cover'}
+				hideRightPage={spreadState.kind === 'backCover'}
 			>
 				{#snippet leftPage()}
 					{#if spreadState.kind === 'cover'}
@@ -555,6 +556,10 @@ $effect(() => {
 					{:else if spreadState.kind === 'about'}
 						<div class="relative h-full w-full">
 							<img src="/girls.png" alt="" aria-hidden="true" class="about-girls-left" />
+						</div>
+					{:else if spreadState.kind === 'backCover'}
+						<div role="presentation" class="h-full w-full">
+							<CoverPage config={activeCover} {username} {diaryTitle} backCover={true} />
 						</div>
 					{:else if spreadState.kind === 'entry'}
 						{@const leftStart = entryPageSpread === 0 ? 0 : (splitPoints[entryPageSpread * 2 - 1] ?? 0)}
@@ -718,10 +723,6 @@ $effect(() => {
 							<div class="mt-6">
 								<button type="button" onclick={closeAbout} class="settings-back-link">← Back</button>
 							</div>
-						</div>
-					{:else if spreadState.kind === 'backCover'}
-						<div role="presentation" class="h-full w-full">
-							<CoverPage config={activeCover} {username} {diaryTitle} backCover={true} />
 						</div>
 					{/if}
 				{/snippet}
@@ -1126,26 +1127,8 @@ $effect(() => {
 
 	.book-shell {
 		container-type: inline-size;
-		background: #1c1008;
 	}
 
-	/* Dark cover binding peeking at top, bottom, and inner sides — sits above the spread */
-	.book-shell::after {
-		content: '';
-		position: absolute;
-		inset: 0;
-		box-shadow:
-			inset 0 5px 4px rgba(0, 0, 0, 0.55),
-			inset 0 -5px 4px rgba(0, 0, 0, 0.4),
-			inset 4px 0 4px rgba(0, 0, 0, 0.3),
-			inset -4px 0 4px rgba(0, 0, 0, 0.3);
-		pointer-events: none;
-		z-index: 15;
-	}
-
-	.book-shell.is-closed::after {
-		display: none;
-	}
 
 	/* ── Shell stacks (procedural, no DOM per leaf) ──────────────────────── */
 
@@ -1173,10 +1156,7 @@ $effect(() => {
 				#f0e2c4 3px,    #f0e2c4 3.5px,
 				#e9dab0 3.5px,  #e9dab0 4px
 			);
-		mask-image:
-			linear-gradient(to right, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0.85) 30%, black 60%),
-			linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.8) 2%, black 5%, black 95%, rgba(0, 0, 0, 0.8) 98%, transparent 100%);
-		mask-composite: intersect;
+		mask-image: linear-gradient(to right, black 65%, rgba(0, 0, 0, 0.7) 100%);
 	}
 
 	.shell-stack-right {
@@ -1195,10 +1175,7 @@ $effect(() => {
 				#f0e2c4 3px,    #f0e2c4 3.5px,
 				#e9dab0 3.5px,  #e9dab0 4px
 			);
-		mask-image:
-			linear-gradient(to left, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0.85) 30%, black 60%),
-			linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.8) 2%, black 5%, black 95%, rgba(0, 0, 0, 0.8) 98%, transparent 100%);
-		mask-composite: intersect;
+		mask-image: linear-gradient(to left, black 65%, rgba(0, 0, 0, 0.7) 100%);
 	}
 
 	/* ── Gutter seam (persistent, above spread, below modals) ───────────── */
