@@ -974,8 +974,8 @@ $effect(() => {
 
 	.about-girls-left {
 		position: absolute;
-		bottom: 6%;
-		right: 4%;
+		bottom: 16%;
+		right: 14%;
 		width: 54%;
 		height: auto;
 		object-fit: contain;
@@ -1126,6 +1126,25 @@ $effect(() => {
 
 	.book-shell {
 		container-type: inline-size;
+		background: #1c1008;
+	}
+
+	/* Dark cover binding peeking at top, bottom, and inner sides — sits above the spread */
+	.book-shell::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		box-shadow:
+			inset 0 5px 4px rgba(0, 0, 0, 0.55),
+			inset 0 -5px 4px rgba(0, 0, 0, 0.4),
+			inset 4px 0 4px rgba(0, 0, 0, 0.3),
+			inset -4px 0 4px rgba(0, 0, 0, 0.3);
+		pointer-events: none;
+		z-index: 15;
+	}
+
+	.book-shell.is-closed::after {
+		display: none;
 	}
 
 	/* ── Shell stacks (procedural, no DOM per leaf) ──────────────────────── */
