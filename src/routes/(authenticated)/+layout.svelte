@@ -556,7 +556,7 @@ $effect(() => {
 							</div>
 						</div>
 					{:else if spreadState.kind === 'toc'}
-						<ExLibrisPage username={username} />
+						<div class="h-full w-full"></div>
 					{:else if spreadState.kind === 'settings'}
 						<div class="h-full w-full bg-transparent"></div>
 					{:else if spreadState.kind === 'backEndpaper'}
