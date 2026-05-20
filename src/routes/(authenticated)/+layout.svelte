@@ -19,7 +19,8 @@ type SpreadState =
   | { kind: 'toc' }
   | { kind: 'entry'; date: string }
 	| { kind: 'settings' }
-	| { kind: 'backCover' };
+	| { kind: 'backCover' }
+	| { kind: 'about' };
 
 const { children }: { children: Snippet } = $props();
 
@@ -158,6 +159,16 @@ function onFlipPrev() {
   }
 }
 
+function openAbout() {
+	prevSpreadState = spreadState;
+	spreadState = { kind: 'about' };
+}
+
+function closeAbout() {
+	spreadState = prevSpreadState ?? { kind: 'cover' };
+	prevSpreadState = null;
+}
+
 function openSettings() {
   prevSpreadState = spreadState;
   spreadState = { kind: 'settings' };
@@ -187,7 +198,7 @@ function closeSettings() {
 }
 
 function computeCanFlipPrev(): boolean {
-	return spreadState.kind !== 'cover' && spreadState.kind !== 'settings';
+	return spreadState.kind !== 'cover' && spreadState.kind !== 'settings' && spreadState.kind !== 'about';
 }
 const canFlipPrev = $derived(computeCanFlipPrev());
 function computeCanFlipNext(): boolean {
@@ -195,6 +206,7 @@ function computeCanFlipNext(): boolean {
   if (spreadState.kind === 'toc') return entryDatePreviews.length > 0;
   if (spreadState.kind === 'settings') return false;
 	if (spreadState.kind === 'backCover') return false;
+	if (spreadState.kind === 'about') return false;
 	return true;
 }
 const canFlipNext = $derived(computeCanFlipNext());
@@ -204,6 +216,7 @@ function getSpreadIndex(): number {
   if (spreadState.kind === 'toc') return 1;
 	if (spreadState.kind === 'settings') return Math.max(spreadCount - 2, 2);
 	if (spreadState.kind === 'backCover') return Math.max(spreadCount - 1, 3);
+	if (spreadState.kind === 'about') return Math.max(spreadCount - 2, 2);
   const idx = entryDatePreviews.findIndex(
     (e) =>
       spreadState.kind === 'entry' &&
@@ -218,6 +231,7 @@ const spreadCount = $derived(entryDatePreviews.length + 3);
 // Entry: narrow margin strips on both sides; text area in between is unobstructed.
 function computePrevZonePct(): number {
   if (spreadState.kind === 'settings') return 0;
+	if (spreadState.kind === 'about') return 0;
 	if (spreadState.kind === 'backCover') return 8;
   if (spreadIndex === 0) return 0;
   if (spreadIndex === 1) return 50;
@@ -226,6 +240,7 @@ function computePrevZonePct(): number {
 const prevZonePct = $derived(computePrevZonePct());
 function computeNextZonePct(): number {
   if (spreadState.kind === 'settings') return 0;
+	if (spreadState.kind === 'about') return 0;
 	if (spreadState.kind === 'backCover') return 0;
   if (spreadIndex === 0) return 0;
   return 5;
@@ -654,6 +669,20 @@ $effect(() => {
 						<div role="presentation" class="h-full w-full cursor-pointer" onclick={onFlipNext}>
 							<CoverPage config={activeCover} {username} {diaryTitle} showSettings={true} onOpenSettings={openSettings} />
 						</div>
+					{:else if spreadState.kind === 'about'}
+						<div class="absolute inset-0 px-8 pt-10 pb-8 overflow-hidden font-serif flex flex-col">
+							<div class="flex-1 flex flex-col justify-center gap-6 text-ink-900">
+								<h1 class="about-title">Edelmore</h1>
+								<p class="about-subtitle">A private diary shaped like a book.</p>
+								<p class="about-body">Made for Iona and Isla, and now for anyone else who wants a quiet place that belongs to them — by their dad, <a href="https://sageframe.net" target="_blank" rel="noopener noreferrer" class="about-link">Andrew Marcus</a>.</p>
+								<p class="about-body">The book opens to today's page. It saves itself. It listens when your hands are tired. Nobody reads it but the person writing in it.</p>
+								<p class="about-body">Built using the principles of Universal Design for Learning, so that keeping a diary doesn't depend on what a pen demands of a hand.</p>
+								<p class="about-body">Runs on a small computer at home.</p>
+							</div>
+							<div class="mt-6">
+								<button type="button" onclick={closeAbout} class="settings-back-link">← Back</button>
+							</div>
+						</div>
 					{:else if spreadState.kind === 'backCover'}
 						<div role="presentation" class="h-full w-full">
 							<CoverPage config={activeCover} {username} {diaryTitle} backCover={true} />
@@ -691,9 +720,10 @@ $effect(() => {
 							<ul class="spell-list">
 								<li><span class="spell-code">*word*</span> <em>soft and quiet</em></li>
 								<li><span class="spell-code">**word**</span> <strong>strong and loud</strong></li>
-									<li><span class="spell-code">_word_ / __word__</span> <u>extra important</u></li>
-									<li><span class="spell-code">~word~ / ~~word~~</span> <s>crossed out</s></li>
+									<li><span class="spell-code">_word_</span> <u>extra important</u></li>
+									<li><span class="spell-code">~word~</span> <s>crossed out</s></li>
 							</ul>
+							<button type="button" class="spell-about" onclick={openAbout} aria-label="About Edelmore">About</button>
 						</div>
 					</div>
 				</div>
@@ -847,6 +877,66 @@ $effect(() => {
 			0 -1px 0 rgba(0, 0, 0, 0.25);
 	}
 
+	/* ── About page ──────────────────────────────────────────────────────── */
+
+	.about-title {
+		font-family: 'Rouge Script', cursive;
+		font-size: 3rem;
+		color: #4a3728;
+		font-weight: 400;
+		line-height: 1.05;
+		text-align: left;
+	}
+
+	.about-subtitle {
+		font-family: 'EB Garamond', Georgia, serif;
+		font-size: 0.98rem;
+		font-style: italic;
+		color: #6b5340;
+		margin: 0;
+		text-align: left;
+	}
+
+	.about-body {
+		font-family: 'EB Garamond', Georgia, serif;
+		font-size: 0.92rem;
+		color: #4a3728;
+		line-height: 1.55;
+		margin: 0;
+		text-align: left;
+	}
+
+	.about-link {
+		color: #8b6914;
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+
+	.about-link:hover {
+		color: #5c4510;
+	}
+
+	/* ── About ribbon button ─────────────────────────────────────────────── */
+
+	.spell-about {
+		font-family: 'Rouge Script', cursive;
+		font-size: 1.95cqi;
+		color: #8b6914;
+		background: transparent;
+		border: none;
+		padding: 0 0.2cqi;
+		cursor: pointer;
+		white-space: nowrap;
+		margin-left: auto;
+		flex-shrink: 0;
+		line-height: 1;
+		text-align: right;
+	}
+
+	.spell-about:hover {
+		color: #5c4510;
+	}
+
 	.settings-warning-text {
 		font-family: 'Rouge Script', cursive;
 		font-size: 1.35rem;
@@ -914,6 +1004,8 @@ $effect(() => {
 	.spell-panel-content {
 		display: flex;
 		align-items: center;
+		width: 100%;
+		flex: 1 1 auto;
 		gap: 1cqi;
 		min-width: 0;
 		overflow: hidden;
