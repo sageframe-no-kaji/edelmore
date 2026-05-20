@@ -16,11 +16,12 @@ import { onMount, tick, untrack } from 'svelte';
 
 type SpreadState =
   | { kind: 'cover' }
+  | { kind: 'frontEndpaper' }
   | { kind: 'toc' }
   | { kind: 'entry'; date: string }
   | { kind: 'settings' }
-  | { kind: 'backCover' }
-  | { kind: 'about' };
+  | { kind: 'backEndpaper' }
+  | { kind: 'backCover' };
 
 const { children }: { children: Snippet } = $props();
 
@@ -122,7 +123,9 @@ async function navigateTo(date: string) {
 
 function onFlipNext() {
   if (spreadState.kind === 'cover') {
-    void navigateTo(todayIso());
+    spreadState = { kind: 'frontEndpaper' };
+  } else if (spreadState.kind === 'frontEndpaper') {
+    spreadState = { kind: 'toc' };
   } else if (spreadState.kind === 'toc') {
     if (entryDatePreviews.length > 0) {
       navigateTo(entryDatePreviews[0].entry_date);
@@ -133,7 +136,7 @@ function onFlipNext() {
     } else if (nextDate) {
       navigateTo(nextDate);
     } else {
-      // Last entry — flip into the end pages of the book.
+      // Last entry — flip into the back of the book.
       prevSpreadState = spreadState;
       spreadState = { kind: 'settings' };
       settingsWarning = false;
@@ -147,18 +150,18 @@ function onFlipNext() {
       draftConfirm = '';
     }
   } else if (spreadState.kind === 'settings') {
-    spreadState = { kind: 'about' };
-  } else if (spreadState.kind === 'about') {
+    spreadState = { kind: 'backEndpaper' };
+  } else if (spreadState.kind === 'backEndpaper') {
     spreadState = { kind: 'backCover' };
   }
 }
 
 function onFlipPrev() {
   if (spreadState.kind === 'backCover') {
-    spreadState = { kind: 'about' };
+    spreadState = { kind: 'backEndpaper' };
     return;
   }
-  if (spreadState.kind === 'about') {
+  if (spreadState.kind === 'backEndpaper') {
     spreadState = { kind: 'settings' };
     return;
   }
@@ -175,18 +178,10 @@ function onFlipPrev() {
       spreadState = { kind: 'toc' };
     }
   } else if (spreadState.kind === 'toc') {
+    spreadState = { kind: 'frontEndpaper' };
+  } else if (spreadState.kind === 'frontEndpaper') {
     spreadState = { kind: 'cover' };
   }
-}
-
-function openAbout() {
-  prevSpreadState = spreadState;
-  spreadState = { kind: 'about' };
-}
-
-function closeAbout() {
-  spreadState = prevSpreadState ?? { kind: 'cover' };
-  prevSpreadState = null;
 }
 
 function openSettings() {
@@ -230,19 +225,20 @@ const canFlipNext = $derived(computeCanFlipNext());
 
 function getSpreadIndex(): number {
   if (spreadState.kind === 'cover') return 0;
-  if (spreadState.kind === 'toc') return 1;
-  if (spreadState.kind === 'settings') return Math.max(spreadCount - 3, 2);
-  if (spreadState.kind === 'about') return Math.max(spreadCount - 2, 3);
-  if (spreadState.kind === 'backCover') return Math.max(spreadCount - 1, 4);
+  if (spreadState.kind === 'frontEndpaper') return 1;
+  if (spreadState.kind === 'toc') return 2;
+  if (spreadState.kind === 'settings') return Math.max(spreadCount - 3, 3);
+  if (spreadState.kind === 'backEndpaper') return Math.max(spreadCount - 2, 4);
+  if (spreadState.kind === 'backCover') return Math.max(spreadCount - 1, 5);
   const idx = entryDatePreviews.findIndex(
     (e) =>
       spreadState.kind === 'entry' &&
       e.entry_date === (spreadState as { kind: 'entry'; date: string }).date
   );
-  return idx >= 0 ? idx + 2 : 2;
+  return idx >= 0 ? idx + 3 : 3;
 }
 const spreadIndex = $derived(getSpreadIndex());
-const spreadCount = $derived(entryDatePreviews.length + 5);
+const spreadCount = $derived(entryDatePreviews.length + 6);
 
 const progress = $derived(
   spreadCount > 1 ? Math.min(Math.max(spreadIndex / (spreadCount - 1), 0), 1) : 0
@@ -530,6 +526,8 @@ $effect(() => {
 		<div
 				class="book-shell"
 				class:is-closed={spreadState.kind === 'cover' || spreadState.kind === 'backCover'}
+				class:hide-left-stack={spreadState.kind === 'frontEndpaper'}
+				class:hide-right-stack={spreadState.kind === 'backEndpaper'}
 				style="--page-font-size: {draftFontSizeCqw}cqw; --left-stack: {leftStack}; --right-stack: {rightStack};"
 			>
 				<div class="shell-stack shell-stack-left" aria-hidden="true"></div>
@@ -549,13 +547,19 @@ $effect(() => {
 			>
 				{#snippet leftPage()}
 					{#if spreadState.kind === 'cover'}
-						<!-- blank — front cover is the only thing visible on this spread -->
+						<!-- blank — front cover fills only the right page -->
+					{:else if spreadState.kind === 'frontEndpaper'}
+						<div class="endpaper-fill endpaper-fill-left">
+							<div class="endpaper-plate-wrap">
+								<ExLibrisPage username={username} />
+							</div>
+						</div>
 					{:else if spreadState.kind === 'toc'}
-						<ExLibrisPage username={username} />
+						<!-- blank — ex-libris is on the frontEndpaper spread now -->
 					{:else if spreadState.kind === 'settings'}
 						<div class="h-full w-full bg-transparent"></div>
-					{:else if spreadState.kind === 'about'}
-						<div class="relative h-full w-full">
+					{:else if spreadState.kind === 'backEndpaper'}
+						<div class="endpaper-fill endpaper-fill-left">
 							<img src="/girls.png" alt="" aria-hidden="true" class="about-girls-left" />
 						</div>
 					{:else if spreadState.kind === 'backCover'}
@@ -705,24 +709,23 @@ $effect(() => {
 								<div class="absolute bottom-2 right-3 text-xs text-stone-400 italic pointer-events-none">→ continued</div>
 							{/if}
 						{/if}
+					{:else if spreadState.kind === 'frontEndpaper'}
+						<div class="endpaper-fill endpaper-fill-right"></div>
 					{:else if spreadState.kind === 'toc'}
 						<TocPage entries={entryDatePreviews} onNavigate={navigateTo} />
 					{:else if spreadState.kind === 'cover'}
 						<div role="presentation" class="h-full w-full cursor-pointer" onclick={onFlipNext}>
 							<CoverPage config={activeCover} {username} {diaryTitle} showSettings={true} onOpenSettings={openSettings} />
 						</div>
-					{:else if spreadState.kind === 'about'}
-						<div class="absolute inset-0 px-8 pt-10 pb-8 overflow-hidden font-serif flex flex-col">
-							<div class="flex-1 flex flex-col justify-center gap-6 text-ink-900">
-								<h1 class="about-title">Edelmore</h1>
-								<p class="about-subtitle">A private diary shaped like a book.</p>
-								<p class="about-body">Made for Iona and Isla, and now for anyone else who wants a quiet place that belongs to them — by their dad, <a href="https://sageframe.net" target="_blank" rel="noopener noreferrer" class="about-link">Andrew Marcus</a>.</p>
-								<p class="about-body">The book opens to today's page. It saves itself. It listens when your hands are tired. Nobody reads it but the person writing in it.</p>
-								<p class="about-body">Built using the principles of Universal Design for Learning, so that keeping a diary doesn't depend on what a pen demands of a hand.</p>
-								<p class="about-body">Runs on a small computer at home.</p>
-							</div>
-							<div class="mt-6">
-								<button type="button" onclick={closeAbout} class="settings-back-link">← Back</button>
+					{:else if spreadState.kind === 'backEndpaper'}
+						<div class="endpaper-fill endpaper-fill-right endpaper-label-page">
+							<img src="/label.png" alt="" aria-hidden="true" class="back-endpaper-label-img" />
+							<div class="back-endpaper-about">
+								<p class="ep-about-title">Edelmore</p>
+								<p class="ep-about-body">A private diary shaped like a book.</p>
+								<p class="ep-about-body">Made for Iona and Isla, and now for anyone else who wants a quiet place that belongs to them — by their dad, Andrew Marcus.</p>
+								<p class="ep-about-body">The book opens to today's page. It saves itself. It listens when your hands are tired. Nobody reads it but the person writing in it.</p>
+								<p class="ep-about-body">Built on the principles of Universal Design for Learning. Runs on a small computer at home.</p>
 							</div>
 						</div>
 					{/if}
@@ -763,10 +766,7 @@ $effect(() => {
 									<li><span class="spell-code">_word_</span> <u>extra important</u></li>
 									<li><span class="spell-code">~word~</span> <s>crossed out</s></li>
 							</ul>
-							{#if spreadState.kind !== 'about'}
-								<button type="button" class="spell-about" onclick={openAbout} aria-label="About Edelmore">About</button>
-							{/if}
-						</div>
+							</div>
 					</div>
 				</div>
 		{/if}
@@ -936,45 +936,58 @@ $effect(() => {
 			0 -1px 0 rgba(0, 0, 0, 0.25);
 	}
 
-	/* ── About page ──────────────────────────────────────────────────────── */
+	/* ── Endpaper pages (front + back) ──────────────────────────────────── */
 
-	.about-title {
-		font-family: 'Rouge Script', cursive;
-		font-size: 3rem;
-		color: #4a3728;
-		font-weight: 400;
-		line-height: 1.05;
-		text-align: left;
+	.endpaper-fill {
+		position: absolute;
+		inset: 0;
+		background: url('/marble.png') center / cover;
+		/* Pressed-flat feel — deeper corner vignette */
+		box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.10);
 	}
 
-	.about-subtitle {
-		font-family: 'EB Garamond', Georgia, serif;
-		font-size: 0.98rem;
-		font-style: italic;
-		color: #6b5340;
-		margin: 0;
-		text-align: left;
+	/* Gutter shadow: glued edge where the paper meets the spine */
+	.endpaper-fill-left {
+		box-shadow:
+			inset -10px 0 24px rgba(0, 0, 0, 0.18),
+			inset 0 0 40px rgba(0, 0, 0, 0.08);
+		clip-path: polygon(
+			0% 0%, 100% 0%, 100% 100%, 0% 100%,
+			3px 82%, 1px 60%, 4px 38%, 0px 16%, 0% 0%
+		);
 	}
 
-	.about-body {
-		font-family: 'EB Garamond', Georgia, serif;
-		font-size: 0.92rem;
-		color: #4a3728;
-		line-height: 1.55;
-		margin: 0;
-		text-align: left;
+	.endpaper-fill-right {
+		box-shadow:
+			inset 10px 0 24px rgba(0, 0, 0, 0.18),
+			inset 0 0 40px rgba(0, 0, 0, 0.08);
+		clip-path: polygon(
+			0% 0%,
+			calc(100% - 2px) 0%, 100% 18%,
+			calc(100% - 3px) 42%, 100% 64%,
+			calc(100% - 1px) 86%, 100% 100%,
+			0% 100%
+		);
 	}
 
-	.about-link {
-		color: #8b6914;
-		text-decoration: underline;
-		text-underline-offset: 2px;
+	/* Bookplate centered on the left front endpaper */
+	.endpaper-plate-wrap {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		pointer-events: none;
 	}
 
-	.about-link:hover {
-		color: #5c4510;
+	.endpaper-plate-wrap > :global(*) {
+		width: 62%;
+		height: auto;
+		position: relative;
+		box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.12);
 	}
 
+	/* Girls photo on back endpaper left page */
 	.about-girls-left {
 		position: absolute;
 		bottom: 16%;
@@ -985,25 +998,53 @@ $effect(() => {
 		pointer-events: none;
 	}
 
-	/* ── About ribbon button ─────────────────────────────────────────────── */
-
-	.spell-about {
-		font-family: 'Rouge Script', cursive;
-		font-size: 1.95cqi;
-		color: #8b6914;
-		background: transparent;
-		border: none;
-		padding: 0 0.2cqi;
-		cursor: pointer;
-		white-space: nowrap;
-		margin-left: auto;
-		flex-shrink: 0;
-		line-height: 1;
-		text-align: right;
+	/* Label + about text layout on back endpaper right page */
+	.endpaper-label-page {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 2.5cqw;
+		padding: 10% 12%;
 	}
 
-	.spell-about:hover {
-		color: #5c4510;
+	.back-endpaper-label-img {
+		width: 35%;
+		height: auto;
+		display: block;
+		pointer-events: none;
+	}
+
+	.back-endpaper-about {
+		text-align: center;
+		max-width: 90%;
+	}
+
+	.ep-about-title {
+		font-family: 'Rouge Script', cursive;
+		font-size: 3.5cqw;
+		color: #3a2510;
+		font-weight: 400;
+		line-height: 1.1;
+		margin: 0 0 0.8cqw;
+	}
+
+	.ep-about-body {
+		font-family: 'EB Garamond', Georgia, serif;
+		font-size: 1.3cqw;
+		color: #4a3520;
+		line-height: 1.6;
+		margin: 0 0 0.6cqw;
+	}
+
+	/* ── Shell stack suppression for endpaper states ────────────────────── */
+
+	.book-shell.hide-left-stack .shell-stack-left {
+		display: none;
+	}
+
+	.book-shell.hide-right-stack .shell-stack-right {
+		display: none;
 	}
 
 	.settings-warning-text {
