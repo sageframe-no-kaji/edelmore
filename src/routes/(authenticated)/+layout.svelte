@@ -715,11 +715,15 @@ $effect(() => {
 							<div class="back-label-sticker">
 								<img src="/label.png" alt="" aria-hidden="true" class="back-label-img" />
 								<div class="back-label-text">
+									<p class="ep-about-section">About</p>
 									<p class="ep-about-title">Edelmore</p>
+									<p class="ep-about-subtitle">(Edelweiss + Evermore)</p>
 									<p class="ep-about-body">A private diary shaped like a book.</p>
-									<p class="ep-about-body">Made for Iona and Isla — and anyone else who wants a quiet place that belongs to them — by their dad, Andrew Marcus.</p>
-									<p class="ep-about-body">Opens to today. Saves itself. Listens when your hands are tired.</p>
-									<p class="ep-about-body">Built on Universal Design for Learning. Runs at home.</p>
+									<p class="ep-about-body">Made for Iona and Isla — and anyone else who wants a quiet place that belongs to them — by their dad, Andrew. <a href="https://atmarcus.net" class="ep-about-link">atmarcus.net</a></p>
+									<p class="ep-about-body">Inspired by Little House on the Prairie, All-of-a-Kind Family, and the diary of Anne Frank.</p>
+									<p class="ep-about-body">Saves itself. Tells your story. Listens when your hands are tired.</p>
+									<p class="ep-about-body">Built with Universal Design for Learning. <a href="https://udlguidelines.cast.org" class="ep-about-link">udlguidelines.cast.org</a></p>
+									<p class="ep-about-body">Runs at home.</p>
 								</div>
 							</div>
 						</div>
@@ -996,51 +1000,74 @@ $effect(() => {
 		pointer-events: none;
 	}
 
-	/* Back endpaper: label sticker with text overlaid inside it */
+	/* Back endpaper: label fills the whole page, text overlaid */
 	.back-label-sticker {
 		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		width: 70%;
+		inset: 0;
 	}
 
 	.back-label-img {
 		width: 100%;
-		height: auto;
+		height: 100%;
+		object-fit: fill;
 		display: block;
 		pointer-events: none;
 	}
 
 	.back-label-text {
 		position: absolute;
-		inset: 22% 12% 14% 12%;
+		inset: 18% 10% 10% 10%;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
 		text-align: center;
-		gap: 0.3cqw;
+		gap: 0.15rem;
 		overflow: hidden;
+	}
+
+	.ep-about-section {
+		font-family: 'EB Garamond', Georgia, serif;
+		font-size: 0.6rem;
+		color: #6a4a28;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		margin: 0 0 0.1rem;
+		flex-shrink: 0;
 	}
 
 	.ep-about-title {
 		font-family: 'Rouge Script', cursive;
-		font-size: 4.5cqw;
+		font-size: 1.5rem;
 		color: #3a2510;
 		font-weight: 400;
 		line-height: 1.0;
-		margin: 0 0 0.6cqw;
+		margin: 0;
+		flex-shrink: 0;
+	}
+
+	.ep-about-subtitle {
+		font-family: 'EB Garamond', Georgia, serif;
+		font-size: 0.58rem;
+		color: #6a4a28;
+		font-style: italic;
+		margin: 0 0 0.25rem;
 		flex-shrink: 0;
 	}
 
 	.ep-about-body {
 		font-family: 'EB Garamond', Georgia, serif;
-		font-size: 1.25cqw;
+		font-size: 0.58rem;
 		color: #4a3520;
 		line-height: 1.5;
 		margin: 0;
 		flex-shrink: 0;
+	}
+
+	.ep-about-link {
+		color: #5a3a18;
+		text-decoration: underline;
+		text-underline-offset: 2px;
 	}
 
 	/* ── Shell stack suppression for endpaper states ────────────────────── */
