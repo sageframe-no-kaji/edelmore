@@ -556,7 +556,20 @@ $effect(() => {
 							</div>
 						</div>
 					{:else if spreadState.kind === 'toc'}
-						<div class="h-full w-full"></div>
+						<div class="toc-ornament-page">
+							<svg class="toc-ornament-svg" viewBox="0 0 300 400" preserveAspectRatio="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+								<rect x="18" y="18" width="264" height="364" fill="none" stroke="#5c3d1e" stroke-width="1.1"/>
+								<rect x="24" y="24" width="252" height="352" fill="none" stroke="#5c3d1e" stroke-width="0.5"/>
+								<path d="M18,38 L18,18 L38,18"   fill="none" stroke="#5c3d1e" stroke-width="0.8" stroke-linecap="round"/>
+								<path d="M282,38 L282,18 L262,18" fill="none" stroke="#5c3d1e" stroke-width="0.8" stroke-linecap="round"/>
+								<path d="M18,362 L18,382 L38,382" fill="none" stroke="#5c3d1e" stroke-width="0.8" stroke-linecap="round"/>
+								<path d="M282,362 L282,382 L262,382" fill="none" stroke="#5c3d1e" stroke-width="0.8" stroke-linecap="round"/>
+								<circle cx="150" cy="18" r="2"  fill="#5c3d1e"/>
+								<circle cx="150" cy="382" r="2" fill="#5c3d1e"/>
+								<circle cx="18"  cy="200" r="2" fill="#5c3d1e"/>
+								<circle cx="282" cy="200" r="2" fill="#5c3d1e"/>
+							</svg>
+						</div>
 					{:else if spreadState.kind === 'settings'}
 						<div class="h-full w-full bg-transparent"></div>
 					{:else if spreadState.kind === 'backEndpaper'}
@@ -936,6 +949,22 @@ $effect(() => {
 		text-shadow:
 			0 1px 2px rgba(255, 250, 230, 0.45),
 			0 -1px 0 rgba(0, 0, 0, 0.25);
+	}
+
+	/* ── TOC left page decorative border ────────────────────────────────── */
+
+	.toc-ornament-page {
+		position: relative;
+		width: 100%;
+		height: 100%;
+	}
+
+	.toc-ornament-svg {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
 	}
 
 	/* ── Endpaper pages (front + back) ──────────────────────────────────── */
