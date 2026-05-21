@@ -77,28 +77,40 @@ async function flip(direction: 'forward' | 'backward', mutate: () => void | Prom
     await mutate();
     return;
   }
-  const oldLive = getLivePage(direction);
-  if (!oldLive) {
+  // Front face = OLD page being turned. For forward that's the right page;
+  // for backward it's the left page.
+  const oldFront = getLivePage(direction);
+  if (!oldFront) {
     await mutate();
     return;
   }
 
   isFlipping = true;
 
-  // Snapshot the OLD page BEFORE mutation.
-  const frontFace = makeFace(oldLive, false);
+  // Snapshot the OLD turning page BEFORE mutation.
+  const frontFace = makeFace(oldFront, false);
 
   // Run the mutation (sync state change, or async routed navigation).
   await Promise.resolve(mutate());
   // Wait for Svelte to flush DOM updates so we can snapshot the new content.
   await tick();
 
-  // Snapshot the NEW page (now in the live DOM).
-  const newLive = getLivePage(direction);
-  const backFace = newLive ? makeFace(newLive, true) : null;
+  // Back face = NEW page on the OPPOSITE side. The back of a turning right
+  // page lands as the left page of the next spread (and vice versa) —
+  // they're the same physical sheet of paper.
+  const oppositeDirection = direction === 'forward' ? 'backward' : 'forward';
+  const newBack = getLivePage(oppositeDirection);
+  const backFace = newBack ? makeFace(newBack, true) : null;
 
-  // Hide the live page so it doesn't show alongside the rotating wrapper.
-  if (newLive) newLive.style.visibility = 'hidden';
+  // Hide the live page on the SAME side as the rotating wrapper during
+  // 0°→90°, then swap to hide the OPPOSITE side during 90°→180°. This
+  // prevents the live page from peeking through the foreshortened wrapper
+  // edge while the back face is still hidden by backface-visibility.
+  const livePages = {
+    same: oldFront,
+    opposite: newBack,
+  };
+  livePages.same.style.visibility = 'hidden';
 
   // Build the rotating wrapper and insert it into the book shell.
   const wrapper = document.createElement('div');
@@ -110,10 +122,16 @@ async function flip(direction: 'forward' | 'backward', mutate: () => void | Prom
   if (backFace) wrapper.appendChild(backFace);
   bookShellEl.appendChild(wrapper);
 
-  // Tween the rotation.
+  // Tween the rotation and swap visibility at the 90° midpoint.
+  let crossedMidpoint = false;
   flipAngle.set(0, { duration: 0 });
   const unsubscribe = flipAngle.subscribe((angle) => {
     wrapper.style.transform = `rotateY(${angle}deg)`;
+    if (!crossedMidpoint && Math.abs(angle) >= 90) {
+      crossedMidpoint = true;
+      livePages.same.style.visibility = '';
+      if (livePages.opposite) livePages.opposite.style.visibility = 'hidden';
+    }
   });
   const target = direction === 'forward' ? -180 : 180;
   await flipAngle.set(target);
@@ -121,7 +139,8 @@ async function flip(direction: 'forward' | 'backward', mutate: () => void | Prom
   // Cleanup.
   unsubscribe();
   wrapper.remove();
-  if (newLive) newLive.style.visibility = '';
+  livePages.same.style.visibility = '';
+  if (livePages.opposite) livePages.opposite.style.visibility = '';
   isFlipping = false;
 }
 
