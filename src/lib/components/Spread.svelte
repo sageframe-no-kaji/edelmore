@@ -98,11 +98,15 @@ const {
 		height: 100%;
 		display: flex;
 		/* Paper color fills the ragged-edge gaps created by clip-path on each page */
-		background: #e2d8ac;
+		background-color: #e2d8ac;
 		box-shadow:
 			0 8px 32px rgba(0, 0, 0, 0.38),
 			0 3px 8px  rgba(0, 0, 0, 0.22),
 			0 1px 2px  rgba(0, 0, 0, 0.14);
+		/* Smooth the open ↔ closed shadow fade. Note: do NOT transition
+		   background-color — when a page is hidden (cover/backCover), the
+		   paper color would be briefly visible through the hidden half. */
+		transition: box-shadow 700ms cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
 	/* Cover and back-cover: kill all shadows — transparent left page bleeds the shadow */

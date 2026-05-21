@@ -77,52 +77,85 @@ async function flip(direction: 'forward' | 'backward', mutate: () => void | Prom
     await mutate();
     return;
   }
-  // Front face = OLD page being turned. For forward that's the right page;
-  // for backward it's the left page.
+  // Front face = OLD page being turned (forward = right; backward = left).
+  // Opposite = the OLD page on the other side, which stays visible during
+  // the first half of the flip (so the user sees the OLD spread until the
+  // turning page passes 90°).
   const oldFront = getLivePage(direction);
+  const oppositeDirection = direction === 'forward' ? 'backward' : 'forward';
+  const oldOpposite = getLivePage(oppositeDirection);
   if (!oldFront) {
     await mutate();
     return;
   }
 
+	if (direction === 'forward') {
+		await new Promise((resolve) => setTimeout(resolve, 500));
+	}
+
   isFlipping = true;
 
-  // Snapshot the OLD turning page BEFORE mutation.
+  // Snapshot the OLD turning page (front face) and OLD opposite-side page
+  // (static overlay) — both BEFORE mutation, so they hold the OLD content.
   const frontFace = makeFace(oldFront, false);
+  const oppositeOverlay = oldOpposite
+    ? (() => {
+        const clone = oldOpposite.cloneNode(true) as HTMLElement;
+        clone.style.position = 'absolute';
+        clone.style.top = '0';
+        clone.style.width = '50%';
+        clone.style.height = '100%';
+        clone.style.left = oppositeDirection === 'backward' ? '0' : '50%';
+        clone.style.margin = '0';
+        clone.style.pointerEvents = 'none';
+        clone.style.zIndex = '45';
+        return clone;
+      })()
+    : null;
+
+  // Build the rotating wrapper with the front face. Back face is added
+  // after mutation. The wrapper at rotateY(0deg) sits on the same-side
+  // half showing the OLD turning page content. All positioning is inline
+  // (not via CSS classes) so there's zero risk of cascade/specificity
+  // putting the wrapper on the wrong half.
+  const wrapper = document.createElement('div');
+  wrapper.style.position = 'absolute';
+  wrapper.style.top = '0';
+  wrapper.style.width = '50%';
+  wrapper.style.height = '100%';
+  wrapper.style.left = direction === 'forward' ? '50%' : '0';
+  wrapper.style.transformOrigin = direction === 'forward' ? 'left center' : 'right center';
+  wrapper.style.transformStyle = 'preserve-3d';
+  wrapper.style.willChange = 'transform';
+  wrapper.style.zIndex = '50';
+  wrapper.style.pointerEvents = 'none';
+  wrapper.style.transform = 'rotateY(0deg)';
+  wrapper.appendChild(frontFace);
+
+  // CRITICAL: insert the overlay and wrapper, and hide the same-side live
+  // page, BEFORE awaiting mutate. Once we await, the browser can paint —
+  // and the live pages will have already updated to NEW content under us.
+  // The OLD-content overlays must be in place when that paint happens.
+  if (oppositeOverlay) bookShellEl.appendChild(oppositeOverlay);
+  bookShellEl.appendChild(wrapper);
+  const livePages = { same: oldFront };
+  livePages.same.style.visibility = 'hidden';
 
   // Run the mutation (sync state change, or async routed navigation).
   await Promise.resolve(mutate());
-  // Wait for Svelte to flush DOM updates so we can snapshot the new content.
   await tick();
 
-  // Back face = NEW page on the OPPOSITE side. The back of a turning right
-  // page lands as the left page of the next spread (and vice versa) —
-  // they're the same physical sheet of paper.
-  const oppositeDirection = direction === 'forward' ? 'backward' : 'forward';
+  // Capture and append the back face (NEW opposite-side content). The back
+  // face is rotateY(180°) so it's hidden by backface-visibility until the
+  // wrapper rotates past 90°.
   const newBack = getLivePage(oppositeDirection);
-  const backFace = newBack ? makeFace(newBack, true) : null;
+  if (newBack) wrapper.appendChild(makeFace(newBack, true));
 
-  // Hide the live page on the SAME side as the rotating wrapper during
-  // 0°→90°, then swap to hide the OPPOSITE side during 90°→180°. This
-  // prevents the live page from peeking through the foreshortened wrapper
-  // edge while the back face is still hidden by backface-visibility.
-  const livePages = {
-    same: oldFront,
-    opposite: newBack,
-  };
-  livePages.same.style.visibility = 'hidden';
-
-  // Build the rotating wrapper and insert it into the book shell.
-  const wrapper = document.createElement('div');
-  wrapper.classList.add(
-    'flip-snapshot',
-    direction === 'forward' ? 'flip-forward' : 'flip-backward'
-  );
-  wrapper.appendChild(frontFace);
-  if (backFace) wrapper.appendChild(backFace);
-  bookShellEl.appendChild(wrapper);
-
-  // Tween the rotation and swap visibility at the 90° midpoint.
+  // Tween the rotation. At the 90° midpoint:
+  //   - unhide the same-side live page (back face foreshortens here, so the
+  //     live page needs to be visible behind it on its own half)
+  //   - remove the opposite-side overlay so the live opposite page (now
+  //     with NEW content, matching the back face) becomes visible
   let crossedMidpoint = false;
   flipAngle.set(0, { duration: 0 });
   const unsubscribe = flipAngle.subscribe((angle) => {
@@ -130,7 +163,7 @@ async function flip(direction: 'forward' | 'backward', mutate: () => void | Prom
     if (!crossedMidpoint && Math.abs(angle) >= 90) {
       crossedMidpoint = true;
       livePages.same.style.visibility = '';
-      if (livePages.opposite) livePages.opposite.style.visibility = 'hidden';
+      if (oppositeOverlay?.parentNode) oppositeOverlay.remove();
     }
   });
   const target = direction === 'forward' ? -180 : 180;
@@ -139,8 +172,8 @@ async function flip(direction: 'forward' | 'backward', mutate: () => void | Prom
   // Cleanup.
   unsubscribe();
   wrapper.remove();
+  if (oppositeOverlay?.parentNode) oppositeOverlay.remove();
   livePages.same.style.visibility = '';
-  if (livePages.opposite) livePages.opposite.style.visibility = '';
   isFlipping = false;
 }
 
@@ -936,12 +969,12 @@ $effect(() => {
 									<li><span class="spell-code">~word~</span> <s>crossed out</s></li>
 							</ul>
 							<div class="spell-buttons">
-								<button type="button" onclick={() => { void flip('forward', () => navigateTo(todayIso())); }} class="spell-today" aria-label="Turn to today">
-									<img src="/now.svg" style="width: 100%; height: 100%; object-fit: contain" alt="" />
-								</button>
 								<button type="button" onclick={() => { void flip('backward', () => { spreadState = { kind: 'toc' }; }); }} class="spell-entries" aria-label="Recent entries">
 									<img src="/entries.svg" style="width: 100%; height: 100%; object-fit: contain" alt="" />
 								</button>
+									<button type="button" onclick={() => { void flip('forward', () => navigateTo(todayIso())); }} class="spell-today" aria-label="Turn to today">
+										<img src="/now.svg" style="width: 100%; height: 100%; object-fit: contain" alt="" />
+									</button>
 								<button type="button" onclick={openSettings} class="spell-settings" aria-label="Settings">
 									<img src="/edelweiss.svg" style="width: 100%; height: 100%; object-fit: contain" alt="" />
 								</button>
@@ -1271,11 +1304,11 @@ $effect(() => {
 	/* ── Shell stack suppression for endpaper states ────────────────────── */
 
 	.book-shell.hide-left-stack .shell-stack-left {
-		display: none;
+		opacity: 0;
 	}
 
 	.book-shell.hide-right-stack .shell-stack-right {
-		display: none;
+		opacity: 0;
 	}
 
 	.settings-warning-text {
@@ -1380,7 +1413,6 @@ $effect(() => {
 		flex-direction: row;
 		flex-wrap: nowrap;
 		gap: 1.0cqi;
-		line-height: 1.8cqi;
 		font-size: 1.42cqi;
 		white-space: nowrap;
 	}
@@ -1473,18 +1505,24 @@ $effect(() => {
 	}
 
 	.book-frame {
-		background: url('/edge.png') center / 100% 100% no-repeat;
 		/* spell-anchor uses cqi units; book-frame is its container since AT-01
 		   moved spell-anchor out of book-shell. */
 		container-type: inline-size;
-		filter:
-			drop-shadow(0 20px 60px rgba(0, 0, 0, 0.45))
-			drop-shadow(0 6px 18px  rgba(0, 0, 0, 0.30))
-			drop-shadow(0 2px 4px   rgba(0, 0, 0, 0.20));
 	}
 
-	.book-frame.is-closed {
-		background: none;
+	/* Leather edge is on a pseudo so we can fade it (image backgrounds can't
+	   transition smoothly between url() and none). */
+	.book-frame::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: url('/edge.png') center / 100% 100% no-repeat;
+		z-index: -1;
+		transition: opacity 700ms cubic-bezier(0.4, 0, 0.2, 1);
+	}
+
+	.book-frame.is-closed::before {
+		opacity: 0;
 	}
 
 	.book-shell {
@@ -1495,6 +1533,18 @@ $effect(() => {
 		left: 50%;
 		transform: translate(-50%, -50%);
 		container-type: inline-size;
+		filter:
+			drop-shadow(0 20px 60px rgba(0, 0, 0, 0.45))
+			drop-shadow(0 6px 18px  rgba(0, 0, 0, 0.30))
+			drop-shadow(0 2px 4px   rgba(0, 0, 0, 0.20));
+		/* Smooth the open ↔ closed structural transition so the book reshapes
+		   in sync with the page-flip rotation rather than snapping instantly. */
+		transition:
+			width 700ms cubic-bezier(0.4, 0, 0.2, 1),
+			height 700ms cubic-bezier(0.4, 0, 0.2, 1),
+			top 700ms cubic-bezier(0.4, 0, 0.2, 1),
+			left 700ms cubic-bezier(0.4, 0, 0.2, 1),
+			transform 700ms cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
 	.book-shell.is-closed {
@@ -1514,6 +1564,7 @@ $effect(() => {
 		bottom: 0;
 		pointer-events: none;
 		z-index: 0;
+		transition: opacity 700ms cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
 	.shell-stack-left {
@@ -1567,6 +1618,7 @@ $effect(() => {
 		transform: translateX(-50%);
 		pointer-events: none;
 		z-index: 5;
+		transition: opacity 700ms cubic-bezier(0.4, 0, 0.2, 1);
 		background:
 			linear-gradient(
 				to right,
@@ -1580,7 +1632,8 @@ $effect(() => {
 
 	.book-shell.is-closed .shell-seam,
 	.book-shell.is-closed .shell-stack {
-		display: none;
+		opacity: 0;
+		transition: none;
 	}
 
 	.spell-flower {
