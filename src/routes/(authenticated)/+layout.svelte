@@ -60,6 +60,13 @@ function makeFace(source: HTMLElement, isBack: boolean): HTMLElement {
   clone.style.height = '100%';
   clone.style.margin = '0';
   clone.style.backfaceVisibility = 'hidden';
+  // Suppress page edge artifacts that stack/double when the clone overlays
+  // the live page: drop-shadow (would double up), outer-edge inset strip
+  // (becomes visible near edge-on), and visibility (cloned hidden pages
+  // must show on the face).
+  clone.style.filter = 'none';
+  clone.style.boxShadow = 'none';
+  clone.style.visibility = 'visible';
   if (isBack) clone.style.transform = 'rotateY(180deg)';
   return clone;
 }
@@ -89,9 +96,9 @@ async function flip(direction: 'forward' | 'backward', mutate: () => void | Prom
     return;
   }
 
-	if (direction === 'forward') {
-		await new Promise((resolve) => setTimeout(resolve, 500));
-	}
+  if (direction === 'forward') {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
 
   isFlipping = true;
 
@@ -109,6 +116,10 @@ async function flip(direction: 'forward' | 'backward', mutate: () => void | Prom
         clone.style.margin = '0';
         clone.style.pointerEvents = 'none';
         clone.style.zIndex = '45';
+        // Same edge-artifact suppression as makeFace.
+        clone.style.filter = 'none';
+        clone.style.boxShadow = 'none';
+        clone.style.visibility = 'visible';
         return clone;
       })()
     : null;
@@ -136,10 +147,17 @@ async function flip(direction: 'forward' | 'backward', mutate: () => void | Prom
   // page, BEFORE awaiting mutate. Once we await, the browser can paint —
   // and the live pages will have already updated to NEW content under us.
   // The OLD-content overlays must be in place when that paint happens.
+  //
+  // Hide the live same-side page via a CSS class, NOT inline style. Svelte's
+  // reactive style-attribute binding on .page-left/.page-right rewrites the
+  // whole style attribute on state change (and on subsequent reactive updates
+  // like splitPoints recomputing 50ms later), which would clobber an inline
+  // visibility:hidden and reveal the page mid-rotation — often before its
+  // content has finished rendering, showing a blank page.
   if (oppositeOverlay) bookShellEl.appendChild(oppositeOverlay);
   bookShellEl.appendChild(wrapper);
   const livePages = { same: oldFront };
-  livePages.same.style.visibility = 'hidden';
+  livePages.same.classList.add('flip-hidden');
 
   // Run the mutation (sync state change, or async routed navigation).
   await Promise.resolve(mutate());
@@ -152,8 +170,10 @@ async function flip(direction: 'forward' | 'backward', mutate: () => void | Prom
   if (newBack) wrapper.appendChild(makeFace(newBack, true));
 
   // Tween the rotation. At the 90° midpoint:
-  //   - unhide the same-side live page (back face foreshortens here, so the
-  //     live page needs to be visible behind it on its own half)
+  //   - reveal the same-side live page by dropping the flip-hidden class.
+  //     If the new state's inline style hides the page (e.g. backCover hides
+  //     the right page), that inline rule still applies, so the page stays
+  //     hidden — no exposed ::before/::after artifacts.
   //   - remove the opposite-side overlay so the live opposite page (now
   //     with NEW content, matching the back face) becomes visible
   let crossedMidpoint = false;
@@ -162,7 +182,7 @@ async function flip(direction: 'forward' | 'backward', mutate: () => void | Prom
     wrapper.style.transform = `rotateY(${angle}deg)`;
     if (!crossedMidpoint && Math.abs(angle) >= 90) {
       crossedMidpoint = true;
-      livePages.same.style.visibility = '';
+      livePages.same.classList.remove('flip-hidden');
       if (oppositeOverlay?.parentNode) oppositeOverlay.remove();
     }
   });
@@ -173,7 +193,7 @@ async function flip(direction: 'forward' | 'backward', mutate: () => void | Prom
   unsubscribe();
   wrapper.remove();
   if (oppositeOverlay?.parentNode) oppositeOverlay.remove();
-  livePages.same.style.visibility = '';
+  livePages.same.classList.remove('flip-hidden');
   isFlipping = false;
 }
 
@@ -1533,10 +1553,9 @@ $effect(() => {
 		left: 50%;
 		transform: translate(-50%, -50%);
 		container-type: inline-size;
-		filter:
-			drop-shadow(0 20px 60px rgba(0, 0, 0, 0.45))
-			drop-shadow(0 6px 18px  rgba(0, 0, 0, 0.30))
-			drop-shadow(0 2px 4px   rgba(0, 0, 0, 0.20));
+		/* Depth shadow lives on .spread (in Spread.svelte) so it doesn't
+		   trace the rotating wrapper, which is appended here as a sibling
+		   of .spread-container during a flip. */
 		/* Smooth the open ↔ closed structural transition so the book reshapes
 		   in sync with the page-flip rotation rather than snapping instantly. */
 		transition:
@@ -1553,6 +1572,13 @@ $effect(() => {
 		top: 0;
 		left: 0;
 		transform: none;
+	}
+
+	/* Applied via JS during a flip to hide the live same-side page without
+	   touching its inline style attribute (which Svelte rewrites on every
+	   reactive update and would clobber). */
+	:global(.flip-hidden) {
+		visibility: hidden !important;
 	}
 
 

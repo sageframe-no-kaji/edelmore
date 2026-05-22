@@ -103,6 +103,16 @@ const {
 			0 8px 32px rgba(0, 0, 0, 0.38),
 			0 3px 8px  rgba(0, 0, 0, 0.22),
 			0 1px 2px  rgba(0, 0, 0, 0.14);
+		/* Outer depth shadow — was on .book-shell, but drop-shadow filter
+		   traces visible content, so anything appended into book-shell during
+		   a flip (the rotating wrapper) would be tracked too. .spread is the
+		   container of the static page content only; the rotating wrapper is
+		   appended at the book-shell level as a sibling of .spread-container,
+		   so this filter stays clean during flips. */
+		filter:
+			drop-shadow(0 20px 60px rgba(0, 0, 0, 0.45))
+			drop-shadow(0 6px 18px  rgba(0, 0, 0, 0.30))
+			drop-shadow(0 2px 4px   rgba(0, 0, 0, 0.20));
 		/* Smooth the open ↔ closed shadow fade. Note: do NOT transition
 		   background-color — when a page is hidden (cover/backCover), the
 		   paper color would be briefly visible through the hidden half. */
