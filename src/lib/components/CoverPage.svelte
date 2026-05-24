@@ -103,6 +103,10 @@ onMount(() => {
     height: 100%;
     object-fit: contain;
     pointer-events: none;
+    /* No drop-shadow: cover.png has fully rectangular alpha, so any
+       drop-shadow produces a visible rectangular outline that doesn't
+       match the cover's softer leather edges. The image's own embossing
+       and frame carry the visual weight in closed states. */
   }
 
   .title-block {

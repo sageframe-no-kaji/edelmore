@@ -1616,27 +1616,17 @@ $effect(() => {
 			height 700ms cubic-bezier(0.4, 0, 0.2, 1),
 			top 700ms cubic-bezier(0.4, 0, 0.2, 1),
 			left 700ms cubic-bezier(0.4, 0, 0.2, 1),
-			transform 700ms cubic-bezier(0.4, 0, 0.2, 1);
+			transform 700ms cubic-bezier(0.4, 0, 0.2, 1),
+			opacity 700ms cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
-	/* Cover (front cover, closed): visible content is the cover image on
-	   the right half of book-frame. Position backdrop to match. */
-	.book-frame.is-cover-state .book-shadow-backdrop {
-		width: 50%;
-		height: 100%;
-		top: 0;
-		left: 50%;
-		transform: none;
-	}
-
-	/* Back cover (closed): visible content is the cover image on the left
-	   half. Position backdrop to match. */
+	/* Cover/back-cover (closed): hide the rectangular backdrop. The
+	   filter:drop-shadow on .cover-photo (in CoverPage.svelte) provides
+	   the shadow, tracing the image's actual alpha mask so soft edges in
+	   the PNG get followed organically. */
+	.book-frame.is-cover-state .book-shadow-backdrop,
 	.book-frame.is-back-cover-state .book-shadow-backdrop {
-		width: 50%;
-		height: 100%;
-		top: 0;
-		left: 0;
-		transform: none;
+		opacity: 0;
 	}
 
 	/* Re-add the flip-hidden class for the live-page hide during flips. */
