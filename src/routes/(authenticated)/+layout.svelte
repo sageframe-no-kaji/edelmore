@@ -164,22 +164,24 @@ async function flip(direction: 'forward' | 'backward', mutate: () => void | Prom
   await Promise.resolve(mutate());
   await tick();
 
-  // Capture and append the back face (NEW opposite-side content). The back
-  // face is rotateY(180°) so it's hidden by backface-visibility until the
-  // wrapper rotates past 90°.
-  const newBack = getLivePage(oppositeDirection);
-  if (newBack) wrapper.appendChild(makeFace(newBack, true));
-
-  // Tween the rotation. At the 90° midpoint: drop flip-hidden on both
-  // lives (they now show NEW content) and remove the opposite overlay.
-  // The wrapper is edge-on (invisible) at 90°, so the swap happens
-  // during the wrapper's invisible moment.
+  // Tween the rotation. backFace is NOT appended yet — we add it at the
+  // 90° midpoint and remove the frontFace then too. This avoids relying
+  // on backface-visibility:hidden, which doesn't always work reliably in
+  // nested 3D contexts (without it, the back face's rotateY(180°) shows
+  // its NEW content MIRRORED during 0-90°, visible behind the front face).
+  // Each face is only in the DOM during the half-rotation it should be
+  // visible in.
   let crossedMidpoint = false;
   flipAngle.set(0, { duration: 0 });
   const unsubscribe = flipAngle.subscribe((angle) => {
     wrapper.style.transform = `rotateY(${angle}deg)`;
     if (!crossedMidpoint && Math.abs(angle) >= 90) {
       crossedMidpoint = true;
+      // Swap front face out, back face in. Wrapper at 90° is edge-on, so
+      // the swap happens during its invisible moment.
+      frontFace.remove();
+      const newBack = getLivePage(oppositeDirection);
+      if (newBack) wrapper.appendChild(makeFace(newBack, true));
       livePages.same.classList.remove('flip-hidden');
       livePages.opposite?.classList.remove('flip-hidden');
       if (oppositeOverlay?.parentNode) oppositeOverlay.remove();
