@@ -1577,13 +1577,13 @@ $effect(() => {
 			transform 700ms cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
-	.book-shell.is-closed {
-		width: 100%;
-		height: 100%;
-		top: 0;
-		left: 0;
-		transform: none;
-	}
+	/* .book-shell stays at 93%×93% in all states (open and closed). Earlier
+	   .is-closed sized it to 100%×100% to make the closed cover fill the
+	   book-frame, but that produced a visible shift+zoom during open/close
+	   transitions: book-shell and its contents resized while the leather
+	   frame faded in. Keeping the size constant means the physical book
+	   doesn't appear to change size when opened — only the leather frame
+	   and the page rotation animate. */
 
 	/* Wraps the static content (stacks + spread + seam). No filter — the
 	   depth shadow now lives on a dedicated .book-shadow-backdrop element
