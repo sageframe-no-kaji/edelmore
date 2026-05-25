@@ -97,8 +97,13 @@ const {
 		width: 100%;
 		height: 100%;
 		display: flex;
-		/* Paper color fills the ragged-edge gaps created by clip-path on each page */
-		background: #e2d8ac;
+		/* Paper color fills the ragged-edge gaps created by clip-path on each
+		   page. Matched to .page's background so when both lives are hidden
+		   during a flip there's no color shift visible through. */
+		background-color: #e8ddb5;
+		/* Close inner depth shadow. Outer depth shadow lives on
+		   .book-shell-inner (in layout) — it traces all the static content
+		   (stacks + spread + seam) without tracking the rotating wrapper. */
 		box-shadow:
 			0 8px 32px rgba(0, 0, 0, 0.38),
 			0 3px 8px  rgba(0, 0, 0, 0.22),

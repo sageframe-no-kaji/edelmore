@@ -1,6 +1,5 @@
 <script lang="ts">
-import { goto } from '$app/navigation';
-import { invalidateAll } from '$app/navigation';
+import { goto, invalidateAll } from '$app/navigation';
 import { page } from '$app/stores';
 import CalendarModal from '$lib/components/CalendarModal.svelte';
 import CoverPage from '$lib/components/CoverPage.svelte';
@@ -13,6 +12,8 @@ import type { EntryDatePreview } from '$lib/db.js';
 import { findSplitIndex, snapToWordBreak } from '$lib/overflow.js';
 import type { Snippet } from 'svelte';
 import { onMount, tick, untrack } from 'svelte';
+import { cubicOut } from 'svelte/easing';
+import { tweened } from 'svelte/motion';
 
 type SpreadState =
   | { kind: 'cover' }
@@ -24,6 +25,179 @@ type SpreadState =
   | { kind: 'backCover' };
 
 const { children }: { children: Snippet } = $props();
+
+// ── Page-flip primitive (two-faced 3D rotation around the spine) ───────────
+//
+// Forward: only the right page rotates, pivoting at its left edge (= spine).
+// Backward: only the left page rotates, pivoting at its right edge (= spine).
+//
+// The rotating wrapper has TWO absolutely-positioned faces:
+//   - front: clone of the OLD page (snapshot taken before mutation)
+//   - back: clone of the NEW page (snapshot taken after mutation),
+//           pre-rotated 180° so its content reads correctly when revealed.
+// Both faces use `backface-visibility: hidden` so each is visible only on
+// the matching half of the rotation arc.
+//
+// The live (now-new-content) page underneath is hidden via `visibility`
+// during the rotation so it doesn't bleed around the rotating wrapper.
+const flipDurationMs = 700;
+const flipAngle = tweened(0, { duration: flipDurationMs, easing: cubicOut });
+let isFlipping = $state(false);
+// biome-ignore lint/style/useConst: bind:this requires let — Biome doesn't see template bindings
+let bookShellEl: HTMLDivElement | null = $state(null);
+
+function getLivePage(direction: 'forward' | 'backward'): HTMLElement | null {
+  const selector = direction === 'forward' ? '.page-right' : '.page-left';
+  return bookShellEl?.querySelector<HTMLElement>(`.spread ${selector}`) ?? null;
+}
+
+function makeFace(source: HTMLElement, isBack: boolean): HTMLElement {
+  const clone = source.cloneNode(true) as HTMLElement;
+  clone.style.position = 'absolute';
+  clone.style.top = '0';
+  clone.style.left = '0';
+  clone.style.width = '100%';
+  clone.style.height = '100%';
+  clone.style.margin = '0';
+  clone.style.backfaceVisibility = 'hidden';
+  // Strip page edge artifacts:
+  //  - filter:drop-shadow would double up against the live page underneath
+  //  - boxShadow: the outer-edge 2px strip becomes visible at edge-on angles
+  //  - clipPath: the clone's clip-path must not differ subpixel-wise from
+  //    the live page's, otherwise the live's 2px inset strip peeks out at
+  //    the bump points. Making the clone a clean rectangle guarantees full
+  //    coverage with no peek.
+  clone.style.filter = 'none';
+  clone.style.boxShadow = 'none';
+  clone.style.clipPath = 'none';
+  clone.style.visibility = 'visible';
+  if (isBack) clone.style.transform = 'rotateY(180deg)';
+  return clone;
+}
+
+async function flip(direction: 'forward' | 'backward', mutate: () => void | Promise<void>) {
+  if (isFlipping) return;
+  if (!bookShellEl) {
+    await mutate();
+    return;
+  }
+  if (
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  ) {
+    await mutate();
+    return;
+  }
+  // Front face = OLD page being turned (forward = right; backward = left).
+  // Opposite = the OLD page on the other side, which stays visible during
+  // the first half of the flip (so the user sees the OLD spread until the
+  // turning page passes 90°).
+  const oldFront = getLivePage(direction);
+  const oppositeDirection = direction === 'forward' ? 'backward' : 'forward';
+  const oldOpposite = getLivePage(oppositeDirection);
+  if (!oldFront) {
+    await mutate();
+    return;
+  }
+
+  if (direction === 'forward') {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  isFlipping = true;
+
+  // Snapshot the OLD turning page (front face) and OLD opposite-side page
+  // (static overlay) — both BEFORE mutation, so they hold the OLD content.
+  const frontFace = makeFace(oldFront, false);
+  const oppositeOverlay = oldOpposite
+    ? (() => {
+        const clone = oldOpposite.cloneNode(true) as HTMLElement;
+        clone.style.position = 'absolute';
+        clone.style.top = '0';
+        clone.style.width = '50%';
+        clone.style.height = '100%';
+        clone.style.left = oppositeDirection === 'backward' ? '0' : '50%';
+        clone.style.margin = '0';
+        clone.style.pointerEvents = 'none';
+        clone.style.zIndex = '45';
+        clone.style.filter = 'none';
+        clone.style.boxShadow = 'none';
+        clone.style.clipPath = 'none';
+        clone.style.visibility = 'visible';
+        return clone;
+      })()
+    : null;
+
+  // Build the rotating wrapper with the front face. Back face is added
+  // after mutation. The wrapper at rotateY(0deg) sits on the same-side
+  // half showing the OLD turning page content. All positioning is inline
+  // (not via CSS classes) so there's zero risk of cascade/specificity
+  // putting the wrapper on the wrong half.
+  const wrapper = document.createElement('div');
+  wrapper.style.position = 'absolute';
+  wrapper.style.top = '0';
+  wrapper.style.width = '50%';
+  wrapper.style.height = '100%';
+  wrapper.style.left = direction === 'forward' ? '50%' : '0';
+  wrapper.style.transformOrigin = direction === 'forward' ? 'left center' : 'right center';
+  wrapper.style.transformStyle = 'preserve-3d';
+  wrapper.style.willChange = 'transform';
+  wrapper.style.zIndex = '50';
+  wrapper.style.pointerEvents = 'none';
+  wrapper.style.transform = 'rotateY(0deg)';
+  wrapper.appendChild(frontFace);
+
+  // CRITICAL: insert overlay + wrapper BEFORE awaiting mutate. Once we
+  // await, the browser can paint, and live pages will have updated to NEW
+  // content under us. The OLD-content overlay must be in place by then.
+  // Hide both live pages via the flip-hidden class so neither's NEW content
+  // can peek out from under the rotating wrapper (same-side, where the
+  // wrapper foreshortens) or from clip-path bump mismatches with the
+  // overlay (opposite-side).
+  if (oppositeOverlay) bookShellEl.appendChild(oppositeOverlay);
+  bookShellEl.appendChild(wrapper);
+  const livePages = { same: oldFront, opposite: oldOpposite };
+  livePages.same.classList.add('flip-hidden');
+  livePages.opposite?.classList.add('flip-hidden');
+
+  // Run the mutation (sync state change, or async routed navigation).
+  await Promise.resolve(mutate());
+  await tick();
+
+  // Tween the rotation. backFace is NOT appended yet — we add it at the
+  // 90° midpoint and remove the frontFace then too. This avoids relying
+  // on backface-visibility:hidden, which doesn't always work reliably in
+  // nested 3D contexts (without it, the back face's rotateY(180°) shows
+  // its NEW content MIRRORED during 0-90°, visible behind the front face).
+  // Each face is only in the DOM during the half-rotation it should be
+  // visible in.
+  let crossedMidpoint = false;
+  flipAngle.set(0, { duration: 0 });
+  const unsubscribe = flipAngle.subscribe((angle) => {
+    wrapper.style.transform = `rotateY(${angle}deg)`;
+    if (!crossedMidpoint && Math.abs(angle) >= 90) {
+      crossedMidpoint = true;
+      // Swap front face out, back face in. Wrapper at 90° is edge-on, so
+      // the swap happens during its invisible moment.
+      frontFace.remove();
+      const newBack = getLivePage(oppositeDirection);
+      if (newBack) wrapper.appendChild(makeFace(newBack, true));
+      livePages.same.classList.remove('flip-hidden');
+      livePages.opposite?.classList.remove('flip-hidden');
+      if (oppositeOverlay?.parentNode) oppositeOverlay.remove();
+    }
+  });
+  const target = direction === 'forward' ? -180 : 180;
+  await flipAngle.set(target);
+
+  // Cleanup.
+  unsubscribe();
+  wrapper.remove();
+  if (oppositeOverlay?.parentNode) oppositeOverlay.remove();
+  livePages.same.classList.remove('flip-hidden');
+  livePages.opposite?.classList.remove('flip-hidden');
+  isFlipping = false;
+}
 
 let spreadState: SpreadState = $state(
   untrack(() =>
@@ -123,46 +297,63 @@ async function navigateTo(date: string) {
 
 function onFlipNext() {
   if (spreadState.kind === 'cover') {
-    spreadState = { kind: 'frontEndpaper' };
+    flip('forward', () => {
+      spreadState = { kind: 'frontEndpaper' };
+    });
   } else if (spreadState.kind === 'frontEndpaper') {
-    spreadState = { kind: 'toc' };
+    flip('forward', () => {
+      spreadState = { kind: 'toc' };
+    });
   } else if (spreadState.kind === 'toc') {
     if (entryDatePreviews.length > 0) {
-      navigateTo(entryDatePreviews[0].entry_date);
+      flip('forward', () => navigateTo(entryDatePreviews[0].entry_date));
     }
   } else if (spreadState.kind === 'entry') {
     if (entryPageSpread < entrySpreadCount - 1) {
-      entryPageSpread += 1;
+      flip('forward', () => {
+        entryPageSpread += 1;
+      });
     } else if (nextDate) {
-      navigateTo(nextDate);
+      const target = nextDate;
+      flip('forward', () => navigateTo(target));
     } else {
       // Last entry — flip into the back of the book.
-      prevSpreadState = spreadState;
-      spreadState = { kind: 'settings' };
-      settingsWarning = false;
-      settingsWarningText = 'You have unsaved changes.';
-      settingsBackArmed = false;
-      draftUsername = username;
-      draftDiaryTitle = diaryTitle;
-      draftFontSizeCqw = fontSizeCqw;
-      draftJournalFont = journalFont as JournalFont;
-      draftPin = '';
-      draftConfirm = '';
+      flip('forward', () => {
+        prevSpreadState = spreadState;
+        spreadState = { kind: 'settings' };
+        settingsWarning = false;
+        settingsWarningText = 'You have unsaved changes.';
+        settingsBackArmed = false;
+        draftUsername = username;
+        draftDiaryTitle = diaryTitle;
+        draftFontSizeCqw = fontSizeCqw;
+        draftJournalFont = journalFont as JournalFont;
+        draftPin = '';
+        draftConfirm = '';
+      });
     }
   } else if (spreadState.kind === 'settings') {
-    spreadState = { kind: 'backEndpaper' };
+    flip('forward', () => {
+      spreadState = { kind: 'backEndpaper' };
+    });
   } else if (spreadState.kind === 'backEndpaper') {
-    spreadState = { kind: 'backCover' };
+    flip('forward', () => {
+      spreadState = { kind: 'backCover' };
+    });
   }
 }
 
 function onFlipPrev() {
   if (spreadState.kind === 'backCover') {
-    spreadState = { kind: 'backEndpaper' };
+    flip('backward', () => {
+      spreadState = { kind: 'backEndpaper' };
+    });
     return;
   }
   if (spreadState.kind === 'backEndpaper') {
-    spreadState = { kind: 'settings' };
+    flip('backward', () => {
+      spreadState = { kind: 'settings' };
+    });
     return;
   }
   if (spreadState.kind === 'settings') {
@@ -171,31 +362,42 @@ function onFlipPrev() {
   }
   if (spreadState.kind === 'entry') {
     if (entryPageSpread > 0) {
-      entryPageSpread -= 1;
+      flip('backward', () => {
+        entryPageSpread -= 1;
+      });
     } else if (prevDate) {
-      navigateTo(prevDate);
+      const target = prevDate;
+      flip('backward', () => navigateTo(target));
     } else {
-      spreadState = { kind: 'toc' };
+      flip('backward', () => {
+        spreadState = { kind: 'toc' };
+      });
     }
   } else if (spreadState.kind === 'toc') {
-    spreadState = { kind: 'frontEndpaper' };
+    flip('backward', () => {
+      spreadState = { kind: 'frontEndpaper' };
+    });
   } else if (spreadState.kind === 'frontEndpaper') {
-    spreadState = { kind: 'cover' };
+    flip('backward', () => {
+      spreadState = { kind: 'cover' };
+    });
   }
 }
 
 function openSettings() {
-  prevSpreadState = spreadState;
-  spreadState = { kind: 'settings' };
-  settingsWarning = false;
-  settingsWarningText = 'You have unsaved changes.';
-  settingsBackArmed = false;
-  draftUsername = username;
-  draftDiaryTitle = diaryTitle;
-  draftFontSizeCqw = fontSizeCqw;
-  draftJournalFont = journalFont as JournalFont;
-  draftPin = '';
-  draftConfirm = '';
+  flip('forward', () => {
+    prevSpreadState = spreadState;
+    spreadState = { kind: 'settings' };
+    settingsWarning = false;
+    settingsWarningText = 'You have unsaved changes.';
+    settingsBackArmed = false;
+    draftUsername = username;
+    draftDiaryTitle = diaryTitle;
+    draftFontSizeCqw = fontSizeCqw;
+    draftJournalFont = journalFont as JournalFont;
+    draftPin = '';
+    draftConfirm = '';
+  });
 }
 
 function closeSettings() {
@@ -205,11 +407,13 @@ function closeSettings() {
     settingsWarningText = 'You have unsaved changes.';
     return;
   }
-  spreadState = prevSpreadState ?? { kind: 'cover' };
-  prevSpreadState = null;
-  settingsWarning = false;
-  settingsBackArmed = false;
-  settingsWarningText = 'You have unsaved changes.';
+  flip('backward', () => {
+    spreadState = prevSpreadState ?? { kind: 'cover' };
+    prevSpreadState = null;
+    settingsWarning = false;
+    settingsBackArmed = false;
+    settingsWarningText = 'You have unsaved changes.';
+  });
 }
 
 function computeCanFlipPrev(): boolean {
@@ -443,8 +647,10 @@ async function saveSettings() {
   draftConfirm = '';
   settingsWarning = false;
   settingsBackArmed = false;
-  spreadState = prevSpreadState ?? { kind: 'cover' };
-  prevSpreadState = null;
+  flip('backward', () => {
+    spreadState = prevSpreadState ?? { kind: 'cover' };
+    prevSpreadState = null;
+  });
   await invalidateAll();
 }
 
@@ -533,14 +739,22 @@ $effect(() => {
 			if (Math.abs(delta) > 50) { if (delta < 0 && canFlipNext) onFlipNext(); else if (delta > 0 && canFlipPrev) onFlipPrev(); }
 		}}
 	>
-		<div class="book-frame relative w-full max-w-5xl aspect-[331/194]" class:is-closed={spreadState.kind === 'cover' || spreadState.kind === 'backCover'}>
 		<div
+			class="book-frame flip-stage relative w-full max-w-5xl aspect-[331/194]"
+			class:is-closed={spreadState.kind === 'cover' || spreadState.kind === 'backCover'}
+			class:is-cover-state={spreadState.kind === 'cover'}
+			class:is-back-cover-state={spreadState.kind === 'backCover'}
+		>
+		<div class="book-shadow-backdrop" aria-hidden="true"></div>
+		<div
+				bind:this={bookShellEl}
 				class="book-shell"
 				class:is-closed={spreadState.kind === 'cover' || spreadState.kind === 'backCover'}
 				class:hide-left-stack={spreadState.kind === 'frontEndpaper'}
 				class:hide-right-stack={spreadState.kind === 'backEndpaper'}
 				style="--page-font-size: {draftFontSizeCqw}cqw; --left-stack: {leftStack}; --right-stack: {rightStack};"
 			>
+				<div class="book-shell-inner">
 				<div class="shell-stack shell-stack-left" aria-hidden="true"></div>
 				<div class="shell-stack shell-stack-right" aria-hidden="true"></div>
 			<Spread
@@ -724,7 +938,7 @@ $effect(() => {
 						<TocPage entries={entryDatePreviews} onNavigate={navigateTo} />
 					{:else if spreadState.kind === 'cover'}
 						<div role="presentation" class="h-full w-full cursor-pointer" onclick={onFlipNext}>
-							<CoverPage config={activeCover} {username} {diaryTitle} showSettings={true} buttonLabel="Turn to today" onOpenSettings={() => { void navigateTo(todayIso()); }} />
+							<CoverPage config={activeCover} {username} {diaryTitle} showSettings={true} buttonLabel="Turn to today" onOpenSettings={() => { void flip('forward', () => navigateTo(todayIso())); }} />
 						</div>
 					{:else if spreadState.kind === 'backEndpaper'}
 						<div class="endpaper-wrap">
@@ -749,6 +963,7 @@ $effect(() => {
 				{/snippet}
 			</Spread>
 				<div class="shell-seam" aria-hidden="true"></div>
+				</div><!-- /book-shell-inner -->
 		</div><!-- /book-shell -->
 		{#if spreadState.kind !== 'cover' && spreadState.kind !== 'backCover'}
 				<div class="spell-anchor">
@@ -784,12 +999,12 @@ $effect(() => {
 									<li><span class="spell-code">~word~</span> <s>crossed out</s></li>
 							</ul>
 							<div class="spell-buttons">
-								<button type="button" onclick={() => { void navigateTo(todayIso()); }} class="spell-today" aria-label="Turn to today">
-									<img src="/now.svg" style="width: 100%; height: 100%; object-fit: contain" alt="" />
-								</button>
-								<button type="button" onclick={() => { spreadState = { kind: 'toc' }; }} class="spell-entries" aria-label="Recent entries">
+								<button type="button" onclick={() => { void flip('backward', () => { spreadState = { kind: 'toc' }; }); }} class="spell-entries" aria-label="Recent entries">
 									<img src="/entries.svg" style="width: 100%; height: 100%; object-fit: contain" alt="" />
 								</button>
+									<button type="button" onclick={() => { void flip('forward', () => navigateTo(todayIso())); }} class="spell-today" aria-label="Turn to today">
+										<img src="/now.svg" style="width: 100%; height: 100%; object-fit: contain" alt="" />
+									</button>
 								<button type="button" onclick={openSettings} class="spell-settings" aria-label="Settings">
 									<img src="/edelweiss.svg" style="width: 100%; height: 100%; object-fit: contain" alt="" />
 								</button>
@@ -1119,11 +1334,11 @@ $effect(() => {
 	/* ── Shell stack suppression for endpaper states ────────────────────── */
 
 	.book-shell.hide-left-stack .shell-stack-left {
-		display: none;
+		opacity: 0;
 	}
 
 	.book-shell.hide-right-stack .shell-stack-right {
-		display: none;
+		opacity: 0;
 	}
 
 	.settings-warning-text {
@@ -1228,7 +1443,6 @@ $effect(() => {
 		flex-direction: row;
 		flex-wrap: nowrap;
 		gap: 1.0cqi;
-		line-height: 1.8cqi;
 		font-size: 1.42cqi;
 		white-space: nowrap;
 	}
@@ -1321,18 +1535,24 @@ $effect(() => {
 	}
 
 	.book-frame {
-		background: url('/edge.png') center / 100% 100% no-repeat;
 		/* spell-anchor uses cqi units; book-frame is its container since AT-01
 		   moved spell-anchor out of book-shell. */
 		container-type: inline-size;
-		filter:
-			drop-shadow(0 20px 60px rgba(0, 0, 0, 0.45))
-			drop-shadow(0 6px 18px  rgba(0, 0, 0, 0.30))
-			drop-shadow(0 2px 4px   rgba(0, 0, 0, 0.20));
 	}
 
-	.book-frame.is-closed {
-		background: none;
+	/* Leather edge is on a pseudo so we can fade it (image backgrounds can't
+	   transition smoothly between url() and none). */
+	.book-frame::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: url('/edge.png') center / 100% 100% no-repeat;
+		z-index: -1;
+		transition: opacity 700ms cubic-bezier(0.4, 0, 0.2, 1);
+	}
+
+	.book-frame.is-closed::before {
+		opacity: 0;
 	}
 
 	.book-shell {
@@ -1343,15 +1563,77 @@ $effect(() => {
 		left: 50%;
 		transform: translate(-50%, -50%);
 		container-type: inline-size;
+		/* Depth shadow lives on .book-shell-inner (below). The rotating flip
+		   wrapper is appended to .book-shell as a sibling of .book-shell-inner,
+		   so the filter only traces the static content (stacks + spread +
+		   seam) and is unaffected by the rotation and the flip-hidden lives. */
+		/* Smooth the open ↔ closed structural transition so the book reshapes
+		   in sync with the page-flip rotation rather than snapping instantly. */
+		transition:
+			width 700ms cubic-bezier(0.4, 0, 0.2, 1),
+			height 700ms cubic-bezier(0.4, 0, 0.2, 1),
+			top 700ms cubic-bezier(0.4, 0, 0.2, 1),
+			left 700ms cubic-bezier(0.4, 0, 0.2, 1),
+			transform 700ms cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
-	.book-shell.is-closed {
-		width: 100%;
-		height: 100%;
-		top: 0;
-		left: 0;
-		transform: none;
+	/* .book-shell stays at 93%×93% in all states (open and closed). Earlier
+	   .is-closed sized it to 100%×100% to make the closed cover fill the
+	   book-frame, but that produced a visible shift+zoom during open/close
+	   transitions: book-shell and its contents resized while the leather
+	   frame faded in. Keeping the size constant means the physical book
+	   doesn't appear to change size when opened — only the leather frame
+	   and the page rotation animate. */
+
+	/* Wraps the static content (stacks + spread + seam). No filter — the
+	   depth shadow now lives on a dedicated .book-shadow-backdrop element
+	   that the flip mechanics never touch, so it's genuinely static. */
+	.book-shell-inner {
+		position: absolute;
+		inset: 0;
 	}
+
+	/* Static depth shadow. Sized to match the visible book silhouette for
+	   each state (open / cover / backCover). Sits behind .book-shell, has
+	   no children, no flips touch it — its box-shadow never recomputes
+	   during a flip, so there's no flash. */
+	.book-shadow-backdrop {
+		position: absolute;
+		width: 93%;
+		height: 93%;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		box-shadow:
+			0 20px 60px rgba(0, 0, 0, 0.45),
+			0 6px 18px  rgba(0, 0, 0, 0.30),
+			0 2px 4px   rgba(0, 0, 0, 0.20);
+		pointer-events: none;
+		z-index: 0;
+		border-radius: 4px;
+		transition:
+			width 700ms cubic-bezier(0.4, 0, 0.2, 1),
+			height 700ms cubic-bezier(0.4, 0, 0.2, 1),
+			top 700ms cubic-bezier(0.4, 0, 0.2, 1),
+			left 700ms cubic-bezier(0.4, 0, 0.2, 1),
+			transform 700ms cubic-bezier(0.4, 0, 0.2, 1),
+			opacity 700ms cubic-bezier(0.4, 0, 0.2, 1);
+	}
+
+	/* Cover/back-cover (closed): hide the rectangular backdrop. The
+	   filter:drop-shadow on .cover-photo (in CoverPage.svelte) provides
+	   the shadow, tracing the image's actual alpha mask so soft edges in
+	   the PNG get followed organically. */
+	.book-frame.is-cover-state .book-shadow-backdrop,
+	.book-frame.is-back-cover-state .book-shadow-backdrop {
+		opacity: 0;
+	}
+
+	/* Re-add the flip-hidden class for the live-page hide during flips. */
+	:global(.flip-hidden) {
+		visibility: hidden !important;
+	}
+
 
 
 	/* ── Shell stacks (procedural, no DOM per leaf) ──────────────────────── */
@@ -1362,6 +1644,7 @@ $effect(() => {
 		bottom: 0;
 		pointer-events: none;
 		z-index: 0;
+		transition: opacity 700ms cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
 	.shell-stack-left {
@@ -1415,6 +1698,7 @@ $effect(() => {
 		transform: translateX(-50%);
 		pointer-events: none;
 		z-index: 5;
+		transition: opacity 700ms cubic-bezier(0.4, 0, 0.2, 1);
 		background:
 			linear-gradient(
 				to right,
@@ -1428,7 +1712,8 @@ $effect(() => {
 
 	.book-shell.is-closed .shell-seam,
 	.book-shell.is-closed .shell-stack {
-		display: none;
+		opacity: 0;
+		transition: none;
 	}
 
 	.spell-flower {
