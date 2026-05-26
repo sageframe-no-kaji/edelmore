@@ -428,6 +428,9 @@ function onFlipPrev() {
 
 type BirdPhase = 'idle' | 'playing' | 'paused';
 let birdPhase: BirdPhase = $state('idle');
+// Spread we last auto-advanced *from*. Each spread auto-advances at most once,
+// so a user who manually flips back doesn't get yanked forward immediately.
+let birdLastAdvancedFromSpread = -1;
 
 function stopBird() {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
@@ -450,12 +453,23 @@ function speakEntry() {
     return;
   }
 
-  const text = content?.trim();
-  if (!text) return;
+  if (!content?.trim()) return;
   synth.cancel();
-  const u = new SpeechSynthesisUtterance(text);
+  // Use the unmodified content so onboundary.charIndex maps directly to splitPoints.
+  const u = new SpeechSynthesisUtterance(content);
+  birdLastAdvancedFromSpread = -1;
   u.onstart = () => {
     birdPhase = 'playing';
+  };
+  u.onboundary = (e) => {
+    if (entryPageSpread === birdLastAdvancedFromSpread) return;
+    const currentSpreadEnd = splitPoints[entryPageSpread * 2 + 1];
+    // ~15 chars of lookahead so the flip lands roughly when speech reaches the
+    // boundary, instead of starting ~750ms after speech has already crossed it.
+    if (currentSpreadEnd !== undefined && e.charIndex > currentSpreadEnd - 15) {
+      birdLastAdvancedFromSpread = entryPageSpread;
+      onFlipNext();
+    }
   };
   u.onend = () => {
     birdPhase = 'idle';
