@@ -1151,27 +1151,40 @@ $effect(() => {
 						{@const rightStart = splitPoints[entryPageSpread * 2]}
 						{@const rightEnd = splitPoints[entryPageSpread * 2 + 1]}
 						{#if rightStart !== undefined}
-							{#if activeEditor !== 'right'}
+							{#if birdPlaying}
 								<div
-									class="absolute inset-0 w-full overflow-hidden px-8 pt-12 pb-8 text-ink-900 leading-relaxed pointer-events-none whitespace-pre-wrap break-words"
+									class="absolute inset-0 h-full w-full overflow-hidden px-8 pt-12 pb-8 text-ink-900 leading-relaxed"
 									style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
 								>
-									{@html renderMarkdown(rightEnd !== undefined ? content.slice(rightStart, rightEnd) : content.slice(rightStart))}
+									<ReaderView
+										text={rightEnd !== undefined ? content.slice(rightStart, rightEnd) : content.slice(rightStart)}
+										sliceStart={rightStart}
+										currentCharIndex={currentNarrationCharIndex}
+									/>
 								</div>
+							{:else}
+								{#if activeEditor !== 'right'}
+									<div
+										class="absolute inset-0 w-full overflow-hidden px-8 pt-12 pb-8 text-ink-900 leading-relaxed pointer-events-none whitespace-pre-wrap break-words"
+										style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
+									>
+										{@html renderMarkdown(rightEnd !== undefined ? content.slice(rightStart, rightEnd) : content.slice(rightStart))}
+									</div>
+								{/if}
+								<textarea
+									bind:this={rightTextareaEl}
+									onfocus={() => { activeEditor = 'right'; lastActiveEditor = 'right'; }}
+									onblur={() => { activeEditor = null; }}
+									oninput={(e) => {
+										const rightEnd = splitPoints[entryPageSpread * 2 + 1];
+										pendingCursorRestore = { absPos: rightStart + e.currentTarget.selectionStart, side: 'right' };
+										const suffix = rightEnd !== undefined ? content.slice(rightEnd) : '';
+										content = content.slice(0, rightStart) + e.currentTarget.value + suffix;
+									}}
+									class={`absolute inset-0 h-full w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent leading-relaxed outline-none relative ${activeEditor === 'right' ? 'text-ink-900 caret-ink-900' : 'text-transparent caret-transparent'}`}
+									style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
+								></textarea>
 							{/if}
-							<textarea
-								bind:this={rightTextareaEl}
-								onfocus={() => { activeEditor = 'right'; lastActiveEditor = 'right'; }}
-								onblur={() => { activeEditor = null; }}
-								oninput={(e) => {
-									const rightEnd = splitPoints[entryPageSpread * 2 + 1];
-									pendingCursorRestore = { absPos: rightStart + e.currentTarget.selectionStart, side: 'right' };
-									const suffix = rightEnd !== undefined ? content.slice(rightEnd) : '';
-									content = content.slice(0, rightStart) + e.currentTarget.value + suffix;
-								}}
-								class={`absolute inset-0 h-full w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent leading-relaxed outline-none relative ${activeEditor === 'right' ? 'text-ink-900 caret-ink-900' : 'text-transparent caret-transparent'}`}
-								style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
-							></textarea>
 							{#if hasMoreContent}
 								<div class="absolute bottom-2 right-3 text-xs text-stone-400 italic pointer-events-none">→ continued</div>
 							{/if}
