@@ -5,6 +5,7 @@ import CalendarModal from '$lib/components/CalendarModal.svelte';
 import CoverPage from '$lib/components/CoverPage.svelte';
 import ExLibrisPage from '$lib/components/ExLibrisPage.svelte';
 import MicQuill from '$lib/components/MicQuill.svelte';
+import ReaderView from '$lib/components/ReaderView.svelte';
 import Spread from '$lib/components/Spread.svelte';
 import TocPage from '$lib/components/TocPage.svelte';
 import { findCover } from '$lib/covers.js';
@@ -1033,28 +1034,38 @@ $effect(() => {
 								class="absolute top-5 left-8 z-10 page-top-link text-xs text-stone-400 tracking-wide hover:text-ornament-gold transition-colors"
 								aria-label="Open calendar"
 							>{($page.data as any).displayDate ?? ''}</button>
-							{#if activeEditor !== 'left'}
-								<div
-									class="absolute inset-0 w-full overflow-hidden px-8 pt-12 pb-8 text-ink-900 leading-relaxed pointer-events-none whitespace-pre-wrap break-words"
-									style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
-								>
-									{@html renderMarkdown(leftEnd !== undefined ? content.slice(leftStart, leftEnd) : content.slice(leftStart))}
+							{#if birdPlaying}
+								<div class="absolute inset-0">
+									<ReaderView
+										text={leftEnd !== undefined ? content.slice(leftStart, leftEnd) : content.slice(leftStart)}
+										sliceStart={leftStart}
+										currentCharIndex={currentNarrationCharIndex}
+									/>
 								</div>
+							{:else}
+								{#if activeEditor !== 'left'}
+									<div
+										class="absolute inset-0 w-full overflow-hidden px-8 pt-12 pb-8 text-ink-900 leading-relaxed pointer-events-none whitespace-pre-wrap break-words"
+										style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
+									>
+										{@html renderMarkdown(leftEnd !== undefined ? content.slice(leftStart, leftEnd) : content.slice(leftStart))}
+									</div>
+								{/if}
+								<textarea
+									bind:this={textareaEl}
+									onfocus={() => { activeEditor = 'left'; lastActiveEditor = 'left'; }}
+									onblur={() => { activeEditor = null; }}
+									oninput={(e) => {
+										const leftEnd = splitPoints[entryPageSpread * 2];
+										pendingCursorRestore = { absPos: leftStart + e.currentTarget.selectionStart, side: 'left' };
+										const suffix = leftEnd !== undefined ? content.slice(leftEnd) : '';
+										content = content.slice(0, leftStart) + e.currentTarget.value + suffix;
+									}}
+									class={`absolute inset-0 h-full w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent leading-relaxed outline-none relative ${activeEditor === 'left' ? 'text-ink-900 caret-ink-900' : 'text-transparent caret-transparent'}`}
+									style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
+									placeholder="Begin writing…"
+								></textarea>
 							{/if}
-							<textarea
-								bind:this={textareaEl}
-								onfocus={() => { activeEditor = 'left'; lastActiveEditor = 'left'; }}
-								onblur={() => { activeEditor = null; }}
-								oninput={(e) => {
-									const leftEnd = splitPoints[entryPageSpread * 2];
-									pendingCursorRestore = { absPos: leftStart + e.currentTarget.selectionStart, side: 'left' };
-									const suffix = leftEnd !== undefined ? content.slice(leftEnd) : '';
-									content = content.slice(0, leftStart) + e.currentTarget.value + suffix;
-								}}
-								class={`absolute inset-0 h-full w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent leading-relaxed outline-none relative ${activeEditor === 'left' ? 'text-ink-900 caret-ink-900' : 'text-transparent caret-transparent'}`}
-								style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
-								placeholder="Begin writing…"
-							></textarea>
 							{#if saved}
 								<span class="absolute bottom-2 left-8 z-10 text-xs text-stone-400 italic pointer-events-none">Saved</span>
 							{/if}
