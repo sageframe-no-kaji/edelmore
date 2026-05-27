@@ -430,6 +430,10 @@ function onFlipPrev() {
 
 type BirdPhase = 'idle' | 'playing' | 'paused';
 let birdPhase: BirdPhase = $state('idle');
+// True while the bird is actively narrating (playing OR paused). When true,
+// the entry page swaps its textareas for a read-only ReaderView with
+// word-by-word highlighting. See ho-07.1.
+const birdPlaying = $derived(birdPhase !== 'idle');
 let birdRate = $state(1.0);
 // Absolute character position in `content` of the most recent boundary event.
 // Used to restart mid-playback at a new rate without losing position.
