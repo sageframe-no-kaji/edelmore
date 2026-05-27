@@ -5,6 +5,7 @@ import {
   updateJournalFont,
   updatePinHash,
   updateUsername,
+  updateVoiceUri,
 } from '$lib/db.js';
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
@@ -33,6 +34,9 @@ export const actions: Actions = {
     const journalFont = data.get('journal_font')?.toString() ?? '';
     const pin = data.get('pin')?.toString() ?? '';
     const confirm = data.get('confirm')?.toString() ?? '';
+    // voice_uri: empty string means "use device default" — store as NULL.
+    const voiceUriRaw = data.get('voice_uri')?.toString() ?? '';
+    const voiceUri = voiceUriRaw === '' ? null : voiceUriRaw;
 
     if (!username) return fail(400, { error: 'Name cannot be empty' });
     if (!diaryTitle) return fail(400, { error: 'Title cannot be empty' });
@@ -53,6 +57,7 @@ export const actions: Actions = {
       updateDiaryTitle(locals.db, locals.user.id, diaryTitle);
       updateFontSize(locals.db, locals.user.id, fontSize);
       updateJournalFont(locals.db, locals.user.id, journalFont);
+      updateVoiceUri(locals.db, locals.user.id, voiceUri);
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
       if (message.includes('UNIQUE constraint failed: users.username')) {

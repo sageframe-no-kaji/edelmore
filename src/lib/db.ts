@@ -11,6 +11,7 @@ export type User = {
   font_size: number;
   journal_font: string;
   diary_title: string;
+  voice_uri: string | null;
   created_at: string;
 };
 
@@ -68,6 +69,7 @@ export function applySchema(db: Database): void {
     'ALTER TABLE users ADD COLUMN font_size REAL NOT NULL DEFAULT 3.4',
     "ALTER TABLE users ADD COLUMN journal_font TEXT NOT NULL DEFAULT 'eb-garamond'",
     `ALTER TABLE users ADD COLUMN diary_title TEXT NOT NULL DEFAULT 'D I A R Y'`,
+    'ALTER TABLE users ADD COLUMN voice_uri TEXT',
   ]) {
     try {
       db.exec(sql);
@@ -92,11 +94,12 @@ export function getUserById(
       font_size: number;
       journal_font: string;
       diary_title: string;
+      voice_uri: string | null;
     }
   | undefined {
   return db
     .prepare(
-      'SELECT id, username, cover_id, font_size, journal_font, diary_title FROM users WHERE id = ?'
+      'SELECT id, username, cover_id, font_size, journal_font, diary_title, voice_uri FROM users WHERE id = ?'
     )
     .get(id) as
     | {
@@ -106,6 +109,7 @@ export function getUserById(
         font_size: number;
         journal_font: string;
         diary_title: string;
+        voice_uri: string | null;
       }
     | undefined;
 }
@@ -211,6 +215,10 @@ export function updateJournalFont(db: Database, userId: number, font: string): v
 
 export function updateDiaryTitle(db: Database, userId: number, title: string): void {
   db.prepare('UPDATE users SET diary_title = ? WHERE id = ?').run(title, userId);
+}
+
+export function updateVoiceUri(db: Database, userId: number, voiceUri: string | null): void {
+  db.prepare('UPDATE users SET voice_uri = ? WHERE id = ?').run(voiceUri, userId);
 }
 
 export function listEntryDatesWithPreview(

@@ -234,6 +234,8 @@ let fontSizeCqw = $state(untrack(() => ($page.data as any).user?.font_size ?? 3.
 let diaryTitle = $state(untrack(() => ($page.data as any).user?.diary_title ?? 'D I A R Y'));
 // biome-ignore lint/suspicious/noExplicitAny: layout data merged into $page.data
 let journalFont = $state(untrack(() => ($page.data as any).user?.journal_font ?? 'eb-garamond'));
+// biome-ignore lint/suspicious/noExplicitAny: layout data merged into $page.data
+let voiceURI: string | null = $state(untrack(() => ($page.data as any).user?.voice_uri ?? null));
 
 // Sync when SvelteKit navigates to a new [date] route.
 $effect(() => {
@@ -468,8 +470,8 @@ function speakFromOffset(offset: number) {
   birdAbsoluteIndex = offset;
   const synth = window.speechSynthesis;
   const u = new SpeechSynthesisUtterance(textFromHere);
-  if (draftVoiceURI) {
-    const picked = synth.getVoices().find((v) => v.voiceURI === draftVoiceURI);
+  if (voiceURI) {
+    const picked = synth.getVoices().find((v) => v.voiceURI === voiceURI);
     if (picked) u.voice = picked;
   }
   u.rate = birdRate;
@@ -646,8 +648,7 @@ let draftConfirm = $state('');
 // We key by voiceURI because macOS ships duplicate `name`s (e.g. two "Daniel").
 type VoiceOption = { uri: string; name: string; lang: string; isDefault: boolean };
 let voiceOptions: VoiceOption[] = $state([]);
-// Step 1: visual only — not persisted, not applied to playback yet.
-let draftVoiceURI: string | null = $state(null);
+let draftVoiceURI: string | null = $state(untrack(() => voiceURI));
 
 $effect(() => {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
@@ -658,7 +659,8 @@ $effect(() => {
       .filter((v) => v.lang.toLowerCase().startsWith('en'))
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((v) => ({ uri: v.voiceURI, name: v.name, lang: v.lang, isDefault: v.default }));
-    if (!draftVoiceURI && voiceOptions.length > 0) {
+    // Fall back to device default only when nothing has been saved or picked.
+    if (!voiceURI && !draftVoiceURI && voiceOptions.length > 0) {
       const fallback = voiceOptions.find((v) => v.isDefault) ?? voiceOptions[0];
       draftVoiceURI = fallback.uri;
     }
@@ -694,6 +696,7 @@ const settingsDirty = $derived(
     draftDiaryTitle !== diaryTitle ||
     draftFontSizeCqw !== fontSizeCqw ||
     draftJournalFont !== journalFont ||
+    draftVoiceURI !== voiceURI ||
     draftPin.length > 0 ||
     draftConfirm.length > 0
 );
@@ -708,11 +711,13 @@ $effect(() => {
     diaryTitle = user.diary_title ?? 'D I A R Y';
     fontSizeCqw = user.font_size ?? 3.4;
     journalFont = user.journal_font ?? 'eb-garamond';
+    voiceURI = user.voice_uri ?? null;
     if (spreadState.kind !== 'settings') {
       draftUsername = username;
       draftDiaryTitle = diaryTitle;
       draftFontSizeCqw = fontSizeCqw;
       draftJournalFont = journalFont as JournalFont;
+      draftVoiceURI = voiceURI;
     }
   });
 });
@@ -803,6 +808,7 @@ async function saveSettings() {
   formData.set('diary_title', draftDiaryTitle);
   formData.set('font_size', String(draftFontSizeCqw));
   formData.set('journal_font', draftJournalFont);
+  formData.set('voice_uri', draftVoiceURI ?? '');
   formData.set('pin', draftPin);
   formData.set('confirm', draftConfirm);
   const response = await fetch('/settings?/saveSettings', {
@@ -839,6 +845,7 @@ async function saveSettings() {
   diaryTitle = draftDiaryTitle;
   fontSizeCqw = draftFontSizeCqw;
   journalFont = draftJournalFont;
+  voiceURI = draftVoiceURI;
   draftPin = '';
   draftConfirm = '';
   settingsWarning = false;
