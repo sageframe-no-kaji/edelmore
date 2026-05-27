@@ -468,6 +468,10 @@ function speakFromOffset(offset: number) {
   birdAbsoluteIndex = offset;
   const synth = window.speechSynthesis;
   const u = new SpeechSynthesisUtterance(textFromHere);
+  if (draftVoiceURI) {
+    const picked = synth.getVoices().find((v) => v.voiceURI === draftVoiceURI);
+    if (picked) u.voice = picked;
+  }
   u.rate = birdRate;
   u.onstart = () => {
     birdPhase = 'playing';
