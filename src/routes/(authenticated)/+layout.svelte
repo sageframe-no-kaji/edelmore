@@ -434,6 +434,9 @@ let birdPhase: BirdPhase = $state('idle');
 // the entry page swaps its textareas for a read-only ReaderView with
 // word-by-word highlighting. See ho-07.1.
 const birdPlaying = $derived(birdPhase !== 'idle');
+// Absolute char index of the word the bird is currently speaking. Null when
+// idle. ReaderView consumes this to highlight the active word.
+let currentNarrationCharIndex: number | null = $state(null);
 let birdRate = $state(1.0);
 // Absolute character position in `content` of the most recent boundary event.
 // Used to restart mid-playback at a new rate without losing position.
@@ -449,6 +452,7 @@ function stopBird() {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   birdPhase = 'idle';
+  currentNarrationCharIndex = null;
 }
 
 // Manual page flip (any change in entryPageSpread that didn't come from the
@@ -484,6 +488,7 @@ function speakFromOffset(offset: number) {
   };
   u.onboundary = (e) => {
     birdAbsoluteIndex = offset + e.charIndex;
+    currentNarrationCharIndex = birdAbsoluteIndex;
     if (entryPageSpread === birdLastAdvancedFromSpread) return;
     const currentSpreadEnd = splitPoints[entryPageSpread * 2 + 1];
     // ~15 chars of lookahead so the flip lands roughly when speech reaches the
@@ -496,9 +501,11 @@ function speakFromOffset(offset: number) {
   };
   u.onend = () => {
     birdPhase = 'idle';
+    currentNarrationCharIndex = null;
   };
   u.onerror = () => {
     birdPhase = 'idle';
+    currentNarrationCharIndex = null;
   };
   synth.speak(u);
 }
