@@ -431,12 +431,30 @@ let birdPhase: BirdPhase = $state('idle');
 // Spread we last auto-advanced *from*. Each spread auto-advances at most once,
 // so a user who manually flips back doesn't get yanked forward immediately.
 let birdLastAdvancedFromSpread = -1;
+// Set to true when the bird itself triggers a flip; consumed by the
+// spread-watching effect so the bird isn't stopped by its own page-turn.
+let birdInitiatedFlip = false;
 
 function stopBird() {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   birdPhase = 'idle';
 }
+
+// Manual page flip (any change in entryPageSpread that didn't come from the
+// bird itself) stops playback so the next click starts fresh on whatever
+// page the user landed on. Only entryPageSpread is a dependency — read
+// birdPhase via untrack so changes to the bird's own state don't re-fire.
+$effect(() => {
+  void entryPageSpread;
+  untrack(() => {
+    if (birdInitiatedFlip) {
+      birdInitiatedFlip = false;
+      return;
+    }
+    if (birdPhase !== 'idle') stopBird();
+  });
+});
 
 function speakEntry() {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
@@ -473,6 +491,7 @@ function speakEntry() {
     // boundary, instead of starting ~750ms after speech has already crossed it.
     if (currentSpreadEnd !== undefined && absoluteIndex > currentSpreadEnd - 15) {
       birdLastAdvancedFromSpread = entryPageSpread;
+      birdInitiatedFlip = true;
       onFlipNext();
     }
   };
