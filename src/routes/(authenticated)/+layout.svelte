@@ -1128,10 +1128,20 @@ $effect(() => {
 								<div class="spell-quill">
 									<MicQuill oninsert={handleTranscriptionInsert} />
 								</div>
-								<button type="button" onclick={speakEntry} class="spell-bird" class:is-playing={birdPhase === 'playing'} class:is-paused={birdPhase === 'paused'} aria-label={birdPhase === 'playing' ? 'Pause' : birdPhase === 'paused' ? 'Resume' : 'Listen'}>
-									<img src="/bird.svg" style="width: 100%; height: 100%; object-fit: contain" alt="" />
-									<span class="spell-bird-note" aria-hidden="true">♪</span>
-								</button>
+								<div class="spell-bird-cluster">
+									<button type="button" onclick={speakEntry} class="spell-bird" class:is-playing={birdPhase === 'playing'} class:is-paused={birdPhase === 'paused'} aria-label={birdPhase === 'playing' ? 'Pause' : birdPhase === 'paused' ? 'Resume' : 'Listen'}>
+										<img src="/bird.svg" style="width: 100%; height: 100%; object-fit: contain" alt="" />
+										<span class="spell-bird-note" aria-hidden="true">♪</span>
+									</button>
+									<div class="spell-bird-speed" class:is-visible={birdPhase !== 'idle'}>
+										<button type="button" class="spell-bird-tortoise" aria-label="Slower">
+											<img src="/tortoise.png" alt="" />
+										</button>
+										<button type="button" class="spell-bird-hare" aria-label="Faster">
+											<img src="/hare.png" alt="" />
+										</button>
+									</div>
+								</div>
 								<button type="button" onclick={() => { void flip('backward', () => { spreadState = { kind: 'toc' }; }); }} class="spell-entries" aria-label="Recent entries">
 									<img src="/entries.svg" style="width: 100%; height: 100%; object-fit: contain" alt="" />
 								</button>
@@ -1681,6 +1691,67 @@ $effect(() => {
 	}
 	.spell-bird.is-paused .spell-bird-note {
 		opacity: 0.35;
+	}
+
+	/* Bird + speed-control cluster. The cluster takes the same slot the bird
+	   used to take; the speed control floats below the bird as an overlay so
+	   it doesn't change the ribbon's layout. */
+	.spell-bird-cluster {
+		position: relative;
+		width: 3.6cqi;
+		height: 3.6cqi;
+		flex-shrink: 0;
+	}
+	.spell-bird-cluster .spell-bird {
+		width: 100%;
+		height: 100%;
+	}
+	.spell-bird-speed {
+		position: absolute;
+		top: calc(100% + 1.2cqi);
+		left: 50%;
+		transform: translateX(-50%);
+		display: flex;
+		align-items: flex-end;
+		justify-content: center;
+		gap: 1cqi;
+		padding: 0.4cqi 0.9cqi;
+		background: rgba(254, 252, 247, 0.96);
+		border: 1px solid #dfc9a4;
+		border-radius: 1.4cqi;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.2s ease;
+		z-index: 40;
+	}
+	.spell-bird-speed.is-visible {
+		opacity: 1;
+		pointer-events: auto;
+	}
+	.spell-bird-tortoise,
+	.spell-bird-hare {
+		width: 2.4cqi;
+		height: 2.4cqi;
+		background: transparent;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+	.spell-bird-tortoise img,
+	.spell-bird-hare img {
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+		object-position: center bottom;
+		opacity: 0.5;
+		transition: opacity 0.15s ease;
+	}
+	.spell-bird-tortoise:hover img,
+	.spell-bird-hare:hover img {
+		opacity: 1;
 	}
 
 	/* ── Ribbon tooltips ─────────────────────────────────────────────────── */
