@@ -871,6 +871,10 @@ async function saveSettings() {
 
 $effect(() => {
   const c = content;
+  // Track entryDate so splits are recomputed when re-entering the entry
+  // view from settings (settings clears splitPoints; without this dep the
+  // compute never re-fires because `content` didn't change).
+  void entryDate;
   /* v8 ignore next 28 */
   const timer = setTimeout(() => {
     if (!textareaEl || !measureEl || spreadState.kind !== 'entry') return;
