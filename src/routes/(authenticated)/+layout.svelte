@@ -428,6 +428,10 @@ function onFlipPrev() {
 
 type BirdPhase = 'idle' | 'playing' | 'paused';
 let birdPhase: BirdPhase = $state('idle');
+let birdRate = $state(1.0);
+// Absolute character position in `content` of the most recent boundary event.
+// Used to restart mid-playback at a new rate without losing position.
+let birdAbsoluteIndex = 0;
 // Spread we last auto-advanced *from*. Each spread auto-advances at most once,
 // so a user who manually flips back doesn't get yanked forward immediately.
 let birdLastAdvancedFromSpread = -1;
@@ -456,6 +460,39 @@ $effect(() => {
   });
 });
 
+// Speak `content` from an absolute character offset, at the current birdRate.
+// Caller is responsible for synth.cancel() if needed.
+function speakFromOffset(offset: number) {
+  const textFromHere = content.slice(offset);
+  if (!textFromHere.trim()) return;
+  birdAbsoluteIndex = offset;
+  const synth = window.speechSynthesis;
+  const u = new SpeechSynthesisUtterance(textFromHere);
+  u.rate = birdRate;
+  u.onstart = () => {
+    birdPhase = 'playing';
+  };
+  u.onboundary = (e) => {
+    birdAbsoluteIndex = offset + e.charIndex;
+    if (entryPageSpread === birdLastAdvancedFromSpread) return;
+    const currentSpreadEnd = splitPoints[entryPageSpread * 2 + 1];
+    // ~15 chars of lookahead so the flip lands roughly when speech reaches the
+    // boundary, instead of starting ~750ms after speech has already crossed it.
+    if (currentSpreadEnd !== undefined && birdAbsoluteIndex > currentSpreadEnd - 15) {
+      birdLastAdvancedFromSpread = entryPageSpread;
+      birdInitiatedFlip = true;
+      onFlipNext();
+    }
+  };
+  u.onend = () => {
+    birdPhase = 'idle';
+  };
+  u.onerror = () => {
+    birdPhase = 'idle';
+  };
+  synth.speak(u);
+}
+
 function speakEntry() {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
   const synth = window.speechSynthesis;
@@ -474,34 +511,25 @@ function speakEntry() {
   if (!content?.trim()) return;
   // Start reading from the current spread's first character, not the top of the entry.
   const startOffset = entryPageSpread === 0 ? 0 : (splitPoints[entryPageSpread * 2 - 1] ?? 0);
-  const textFromHere = content.slice(startOffset);
-  if (!textFromHere.trim()) return;
-  synth.cancel();
-  const u = new SpeechSynthesisUtterance(textFromHere);
   birdLastAdvancedFromSpread = -1;
-  u.onstart = () => {
-    birdPhase = 'playing';
-  };
-  u.onboundary = (e) => {
-    if (entryPageSpread === birdLastAdvancedFromSpread) return;
-    const currentSpreadEnd = splitPoints[entryPageSpread * 2 + 1];
-    // charIndex is into textFromHere; add startOffset to compare against splitPoints.
-    const absoluteIndex = startOffset + e.charIndex;
-    // ~15 chars of lookahead so the flip lands roughly when speech reaches the
-    // boundary, instead of starting ~750ms after speech has already crossed it.
-    if (currentSpreadEnd !== undefined && absoluteIndex > currentSpreadEnd - 15) {
-      birdLastAdvancedFromSpread = entryPageSpread;
-      birdInitiatedFlip = true;
-      onFlipNext();
-    }
-  };
-  u.onend = () => {
-    birdPhase = 'idle';
-  };
-  u.onerror = () => {
-    birdPhase = 'idle';
-  };
-  synth.speak(u);
+  synth.cancel();
+  speakFromOffset(startOffset);
+}
+
+function setBirdRate(rate: number) {
+  const clamped = Math.max(0.2, Math.min(1.3, Math.round(rate * 100) / 100));
+  if (clamped === birdRate) return;
+  birdRate = clamped;
+  if (birdPhase !== 'playing' && birdPhase !== 'paused') return;
+  // Restart from current position at the new rate. The Web Speech API
+  // doesn't expose a live rate setter — we have to cancel and re-speak.
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  speakFromOffset(birdAbsoluteIndex);
+}
+
+function changeBirdRate(delta: number) {
+  setBirdRate(birdRate + delta);
 }
 
 function openSettings() {
@@ -1134,10 +1162,11 @@ $effect(() => {
 										<span class="spell-bird-note" aria-hidden="true">♪</span>
 									</button>
 									<div class="spell-bird-speed" class:is-visible={birdPhase !== 'idle'}>
-										<button type="button" class="spell-bird-tortoise" aria-label="Slower">
+										<button type="button" onclick={() => changeBirdRate(-0.2)} class="spell-bird-tortoise" aria-label="Slower" disabled={birdRate <= 0.2}>
 											<img src="/tortoise.png" alt="" />
 										</button>
-										<button type="button" class="spell-bird-hare" aria-label="Faster">
+										<button type="button" onclick={() => setBirdRate(1.0)} class="spell-bird-rate-reset" aria-label="Reset speed" disabled={birdRate === 1.0}></button>
+										<button type="button" onclick={() => changeBirdRate(0.05)} class="spell-bird-hare" aria-label="Faster" disabled={birdRate >= 1.3}>
 											<img src="/hare.png" alt="" />
 										</button>
 									</div>
@@ -1749,9 +1778,37 @@ $effect(() => {
 		opacity: 0.5;
 		transition: opacity 0.15s ease;
 	}
-	.spell-bird-tortoise:hover img,
-	.spell-bird-hare:hover img {
+	.spell-bird-tortoise:hover:not(:disabled) img,
+	.spell-bird-hare:hover:not(:disabled) img {
 		opacity: 1;
+	}
+	.spell-bird-tortoise:disabled,
+	.spell-bird-hare:disabled {
+		cursor: not-allowed;
+	}
+	.spell-bird-tortoise:disabled img,
+	.spell-bird-hare:disabled img {
+		opacity: 0.2;
+	}
+
+	.spell-bird-rate-reset {
+		align-self: center;
+		width: 0.7cqi;
+		height: 0.7cqi;
+		border-radius: 50%;
+		background: #4a3728;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		opacity: 0.45;
+		transition: opacity 0.15s ease;
+	}
+	.spell-bird-rate-reset:hover:not(:disabled) {
+		opacity: 1;
+	}
+	.spell-bird-rate-reset:disabled {
+		cursor: default;
+		opacity: 0.2;
 	}
 
 	/* ── Ribbon tooltips ─────────────────────────────────────────────────── */
