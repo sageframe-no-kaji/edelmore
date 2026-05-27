@@ -637,6 +637,34 @@ let draftFontSizeCqw = $state(untrack(() => fontSizeCqw));
 let draftJournalFont = $state(untrack(() => journalFont as JournalFont));
 let draftPin = $state('');
 let draftConfirm = $state('');
+// English voices installed on this device, refreshed when speechSynthesis
+// fires `voiceschanged` (Chrome loads voices asynchronously on first paint).
+// We key by voiceURI because macOS ships duplicate `name`s (e.g. two "Daniel").
+type VoiceOption = { uri: string; name: string; lang: string; isDefault: boolean };
+let voiceOptions: VoiceOption[] = $state([]);
+// Step 1: visual only — not persisted, not applied to playback yet.
+let draftVoiceURI: string | null = $state(null);
+
+$effect(() => {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  const synth = window.speechSynthesis;
+  const refresh = () => {
+    voiceOptions = synth
+      .getVoices()
+      .filter((v) => v.lang.toLowerCase().startsWith('en'))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((v) => ({ uri: v.voiceURI, name: v.name, lang: v.lang, isDefault: v.default }));
+    if (!draftVoiceURI && voiceOptions.length > 0) {
+      const fallback = voiceOptions.find((v) => v.isDefault) ?? voiceOptions[0];
+      draftVoiceURI = fallback.uri;
+    }
+  };
+  refresh();
+  synth.addEventListener('voiceschanged', refresh);
+  return () => {
+    synth.removeEventListener('voiceschanged', refresh);
+  };
+});
 let settingsWarning = $state(false);
 let settingsWarningText = $state('You have unsaved changes.');
 let settingsBackArmed = $state(false);
@@ -1007,7 +1035,7 @@ $effect(() => {
 					{#if spreadState.kind === 'settings'}
 						<div class="absolute inset-0 px-8 pt-10 pb-8 overflow-hidden font-serif">
 							<div class="flex h-full flex-col">
-								<div class="flex-1 space-y-7">
+								<div class="flex-1 space-y-4">
 									<section>
 										<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Display Name</p>
 										<input type="text" bind:value={draftUsername} oninput={(e) => { draftUsername = e.currentTarget.value; }} maxlength="40" required class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors" />
@@ -1040,14 +1068,27 @@ $effect(() => {
 									</section>
 
 									<section>
+										<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-2">Reading Voice</p>
+										{#if voiceOptions.length === 0}
+											<p class="text-[0.7rem] italic text-stone-400">No voices on this device yet.</p>
+										{:else}
+											<select bind:value={draftVoiceURI} class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-sm pb-1 outline-none focus:border-stone-500 transition-colors">
+												{#each voiceOptions as v}
+													<option value={v.uri}>{v.name} ({v.lang})</option>
+												{/each}
+											</select>
+										{/if}
+									</section>
+
+									<section>
 										<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-1">Change PIN</p>
 										<p class="text-[0.6rem] italic text-stone-400 mb-2">4 digits — no current PIN required</p>
-										<input type="password" bind:value={draftPin} inputmode="numeric" pattern="\d{4}" maxlength="4" placeholder="New PIN" class="mb-2 w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors" />
-										<input type="password" bind:value={draftConfirm} inputmode="numeric" pattern="\d{4}" maxlength="4" placeholder="Confirm PIN" class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-base pb-1 outline-none focus:border-stone-500 transition-colors" />
+										<input type="password" bind:value={draftPin} inputmode="numeric" pattern="\d{4}" maxlength="4" placeholder="New PIN" class="mb-2 w-full bg-transparent border-b border-stone-300 text-ink-900 text-sm pb-1 outline-none focus:border-stone-500 transition-colors" />
+										<input type="password" bind:value={draftConfirm} inputmode="numeric" pattern="\d{4}" maxlength="4" placeholder="Confirm PIN" class="w-full bg-transparent border-b border-stone-300 text-ink-900 text-sm pb-1 outline-none focus:border-stone-500 transition-colors" />
 									</section>
 								</div>
 
-								<div class="mt-8 flex items-end justify-end gap-3">
+								<div class="mt-4 flex items-end justify-end gap-3">
 									{#if settingsWarning}
 										<span class="settings-warning-text">{settingsWarningText}</span>
 									{/if}
