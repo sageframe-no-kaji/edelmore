@@ -17,7 +17,7 @@ let listEl: HTMLUListElement | null = $state(null);
 let visibleCount = $state(untrack(() => entries.length));
 
 const orderedEntries = $derived(
-  [...entries].sort((left, right) => left.entry_date.localeCompare(right.entry_date))
+  [...entries].sort((left, right) => right.entry_date.localeCompare(left.entry_date))
 );
 
 function updateVisibleCount() {
@@ -78,7 +78,7 @@ $effect(() => {
           <button
             type="button"
             onclick={() => onNavigate(entry.entry_date)}
-            class="w-full text-left font-serif text-xs text-ink-900 hover:text-ornament-gold transition-colors"
+            class="w-full text-left font-serif text-sm text-ink-900 hover:text-ornament-gold transition-colors"
           >
             {formatDisplayDate(entry.entry_date)}
           </button>

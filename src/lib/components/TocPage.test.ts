@@ -15,14 +15,14 @@ describe('TocPage', () => {
     const { getAllByRole } = render(TocPage, { entries, onNavigate });
     const buttons = getAllByRole('button');
     buttons[0].click();
-    expect(onNavigate).toHaveBeenCalledWith('2026-05-13');
+    expect(onNavigate).toHaveBeenCalledWith('2026-05-14');
   });
 
-  it('renders entries oldest first', () => {
+  it('renders entries newest first', () => {
     const { getAllByRole } = render(TocPage, { entries, onNavigate: vi.fn() });
     const buttons = getAllByRole('button');
-    expect(buttons[0].textContent).toContain('May 13');
-    expect(buttons[1].textContent).toContain('May 14');
+    expect(buttons[0].textContent).toContain('May 14');
+    expect(buttons[1].textContent).toContain('May 13');
   });
 
   it('renders empty state when entries is empty', () => {
