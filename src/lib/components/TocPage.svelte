@@ -78,7 +78,7 @@ $effect(() => {
           <button
             type="button"
             onclick={() => onNavigate(entry.entry_date)}
-            class="w-full text-left font-serif text-sm text-ink-900 hover:text-ornament-gold transition-colors"
+            class="w-full text-left font-serif text-base text-ink-900 hover:text-ornament-gold transition-colors"
           >
             {formatDisplayDate(entry.entry_date)}
           </button>
