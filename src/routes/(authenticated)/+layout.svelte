@@ -281,7 +281,21 @@ $effect(() => {
   const date = spreadState.kind === 'entry' ? spreadState.date : null;
   if (!date) return;
   const timer = setTimeout(async () => {
-    /* v8 ignore next 8 */
+    /* v8 ignore next 22 */
+    if (!c.trim()) {
+      // Empty entry — delete it and navigate away.
+      await fetch(`/api/entries/${date}`, { method: 'DELETE' });
+      entryDatePreviews = entryDatePreviews.filter((e) => e.entry_date !== date);
+      stopBird();
+      // Go to the nearest remaining entry, or back to the TOC.
+      const target = prevDate ?? nextDate;
+      if (target) {
+        await navigateTo(target);
+      } else {
+        flip('backward', () => { spreadState = { kind: 'toc' }; });
+      }
+      return;
+    }
     await fetch('/api/entries', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

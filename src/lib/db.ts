@@ -174,6 +174,10 @@ export function upsertEntry(
   ).run(userId, entryDate, content);
 }
 
+export function deleteEntry(db: Database, userId: number, entryDate: string): void {
+  db.prepare('DELETE FROM entries WHERE user_id = ? AND entry_date = ?').run(userId, entryDate);
+}
+
 export function listEntryDates(db: Database, userId: number): string[] {
   return (
     db
