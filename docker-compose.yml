@@ -2,11 +2,16 @@ services:
   edelmore:
     build: .
     restart: unless-stopped
+    # Loads .env into the container (cp .env.example .env first). Only
+    # DATABASE_URL is required; the transcription (Whisper) and narration
+    # (Kokoro TTS) vars are optional — leave them blank in .env to run without
+    # voice. The image bundles neither service.
+    env_file:
+      - .env
+    environment:
+      # Override the DB path to the mounted volume, regardless of .env.
+      - DATABASE_URL=/data/edelmore.db
     volumes:
       - ./data:/data
-    environment:
-      - DATABASE_URL=/data/edelmore.db
-      - WHISPER_URL=${WHISPER_URL}
-      - SESSION_SECRET=${SESSION_SECRET}
     ports:
       - "3000:3000"
