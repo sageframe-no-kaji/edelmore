@@ -112,6 +112,40 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// ── Idle shutdown ─────────────────────────────────────────────────────────────
+//
+// After each successful narration the idle timer is reset. When it fires,
+// the Kokoro container is stopped via the Docker remote API so it releases
+// GPU memory. KOKORO_IDLE_MINUTES defaults to 10.
+
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+function idleMs(): number {
+  const minutes = Number(env.KOKORO_IDLE_MINUTES ?? '10');
+  return (Number.isFinite(minutes) && minutes > 0 ? minutes : 10) * 60_000;
+}
+
+function resetIdleTimer(): void {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    void stopKokoro();
+  }, idleMs());
+}
+
+async function stopKokoro(): Promise<void> {
+  const dockerApiUrl = env.DOCKER_API_URL;
+  const containerName = env.KOKORO_CONTAINER_NAME;
+  if (!dockerApiUrl || !containerName) return;
+  try {
+    await fetch(`${dockerApiUrl}/containers/${containerName}/stop`, { method: 'POST' });
+    console.log('Kokoro stopped after idle timeout');
+  } catch (e) {
+    console.error('Failed to stop Kokoro container:', e instanceof Error ? e.message : e);
+  }
+}
+
+// ── On-demand startup ─────────────────────────────────────────────────────────
+
 /**
  * If DOCKER_API_URL and KOKORO_CONTAINER_NAME are configured, ensure the
  * Kokoro container is running before we attempt a TTS request. On a cold
@@ -129,7 +163,7 @@ async function ensureKokoroRunning(): Promise<void> {
     const stateRes = await fetch(`${dockerApiUrl}/containers/${containerName}/json`);
     if (stateRes.ok) {
       const data = (await stateRes.json()) as { State: { Running: boolean } };
-      if (data.State.Running) return; // already up
+      if (data.State.Running) return; // already up — idle timer ticks from last narration
     }
   } catch {
     return; // Docker API unreachable — let TTS fail naturally
@@ -163,7 +197,6 @@ async function ensureKokoroRunning(): Promise<void> {
     }
   }
   console.error('Kokoro did not become ready within 60 s');
-  // Proceed anyway — the TTS fetch below will 503 and the browser falls back.
 }
 
 // ── Request handler ───────────────────────────────────────────────────────────
@@ -246,6 +279,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     format: formatToMime(upstream.audio_format ?? 'mp3'),
     words: computeCharOffsets(body.text, upstream.timestamps),
   };
+
+  // Narration delivered — reset the idle shutdown clock.
+  resetIdleTimer();
 
   return new Response(JSON.stringify(responsePayload), {
     status: 200,
