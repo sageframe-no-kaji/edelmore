@@ -15,7 +15,7 @@ import type { EntryDatePreview } from '$lib/db.js';
 import {
   audioBlobUrlFromBase64,
   isKokoroVoiceUri,
-  type SpeakResponse,
+  type StreamChunk,
   type WordTiming,
 } from '$lib/narration.js';
 import { findSplitIndex, snapToWordBreak } from '$lib/overflow.js';
@@ -507,6 +507,18 @@ let birdTtsFlipScheduledAt: number | null = null;
 // AbortController for the in-flight /api/speak fetch — lets stopBird()
 // cancel a loading request immediately instead of waiting for the response.
 let birdTtsFetchAbort: AbortController | null = null;
+// ReadableStream reader for the NDJSON body — cancelled by cleanupTtsAudio.
+let birdStreamReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+// Audio elements queued for sequential playback after the current chunk.
+let birdAudioQueue: Array<{ blobUrl: string; audioEl: HTMLAudioElement; audioOffset: number }> = [];
+// Absolute audio time (seconds) at which the currently-playing chunk starts.
+// Used in boundary polling: t = birdChunkTimeOffset + birdAudioEl.currentTime.
+let birdChunkTimeOffset = 0;
+// True once the upstream NDJSON stream has closed (no more chunks arriving).
+let birdStreamDone = false;
+// True when the current audio chunk ended but the next hasn't arrived yet.
+// The stream reader sets this to false and immediately starts the queued item.
+let birdWaitingForChunk = false;
 
 function stopBird() {
   if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -569,68 +581,172 @@ async function speakFromOffsetViaTts(offset: number) {
   birdPhase = 'loading';
   birdAbsoluteIndex = offset;
   birdTtsBaseOffset = offset;
+  birdChunkTimeOffset = 0;
+  birdStreamDone = false;
+  birdWaitingForChunk = false;
 
   birdTtsFetchAbort = new AbortController();
-  let payload: SpeakResponse;
+  let response: Response;
   try {
-    const response = await fetch('/api/speak', {
+    response = await fetch('/api/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: textFromHere, voice: voiceURI, speed: birdRate }),
       signal: birdTtsFetchAbort.signal,
     });
     if (!response.ok) throw new Error(`TTS HTTP ${response.status}`);
-    payload = await response.json();
   } catch (e) {
     if (birdPhase === 'loading') birdPhase = 'idle';
     throw e;
   }
-  birdTtsFetchAbort = null;
+  // Keep birdTtsFetchAbort live so cleanupTtsAudio can abort the body stream.
 
-  // Narration may have been cancelled while the fetch was in flight (stopBird,
-  // page navigation, rate change). Bail out so we don't start a second stream.
+  // Bail out if cancelled while the fetch headers were in flight.
   if (birdPhase !== 'loading') return;
 
-  birdTtsTimings = payload.words ?? [];
-  birdTtsBoundaryIdx = 0;
-  birdTtsFlipScheduledAt = computeFlipScheduleTime();
+  const body = response.body;
+  if (!body) {
+    birdPhase = 'idle';
+    return;
+  }
 
-  birdAudioBlobUrl = audioBlobUrlFromBase64(payload.audio, payload.format);
-  birdAudioEl = new Audio(birdAudioBlobUrl);
-  birdAudioEl.playbackRate = birdRate;
+  birdStreamReader = body.getReader();
+  void readTtsStream(birdStreamReader);
+}
 
-  birdAudioEl.onplay = () => {
+// ── Streaming audio helpers ───────────────────────────────────────────────────
+
+function startChunkPlayback(blobUrl: string, audioEl: HTMLAudioElement, audioOffset: number) {
+  birdAudioEl = audioEl;
+  birdAudioBlobUrl = blobUrl;
+  birdChunkTimeOffset = audioOffset;
+  audioEl.playbackRate = birdRate;
+
+  audioEl.onplay = () => {
     birdPhase = 'playing';
     startBoundaryPolling();
   };
-  birdAudioEl.onpause = () => {
-    // Only update state if the element is actually paused. The pause event
-    // fires asynchronously, so a rapid pause→resume means this event arrives
-    // after play() was already called — birdAudioEl.paused is false in that
-    // case and we correctly ignore it.
+  audioEl.onpause = () => {
+    // Fires asynchronously — check paused flag to ignore rapid pause→resume.
     if (birdPhase === 'playing' && birdAudioEl?.paused) birdPhase = 'paused';
   };
-  birdAudioEl.onended = () => {
-    cleanupTtsAudio();
-    currentNarrationCharIndex = null;
-    const hasNextSpread = entryPageSpread < entrySpreadCount - 1;
-    if (hasNextSpread) {
-      // Auto-advance: flip to next spread and continue narrating.
-      birdPhase = 'loading';
-      birdAutoAdvancePending = true;
-      birdInitiatedFlip = true;
-      flip('forward', () => { entryPageSpread += 1; });
-    } else {
-      birdPhase = 'idle';
-    }
-  };
-  birdAudioEl.onerror = () => {
+  audioEl.onended = () => advanceToNextChunk();
+  audioEl.onerror = () => {
     cleanupTtsAudio();
     birdPhase = 'idle';
     currentNarrationCharIndex = null;
   };
 
-  await birdAudioEl.play();
+  void audioEl.play();
+}
+
+function advanceToNextChunk() {
+  // Revoke the blob URL for the chunk that just finished.
+  if (birdAudioBlobUrl) {
+    URL.revokeObjectURL(birdAudioBlobUrl);
+    birdAudioBlobUrl = null;
+  }
+  birdAudioEl = null;
+
+  if (birdAudioQueue.length > 0) {
+    const next = birdAudioQueue.shift()!;
+    startChunkPlayback(next.blobUrl, next.audioEl, next.audioOffset);
+  } else if (birdStreamDone) {
+    handleNarrationEnd();
+  } else {
+    // More chunks are still arriving — wait for the stream reader to deliver one.
+    birdWaitingForChunk = true;
+  }
+}
+
+function handleNarrationEnd() {
+  cleanupTtsAudio();
+  currentNarrationCharIndex = null;
+  const hasNextSpread = entryPageSpread < entrySpreadCount - 1;
+  if (hasNextSpread) {
+    birdPhase = 'loading';
+    birdAutoAdvancePending = true;
+    birdInitiatedFlip = true;
+    flip('forward', () => { entryPageSpread += 1; });
+  } else {
+    birdPhase = 'idle';
+  }
+}
+
+function handleStreamChunk(chunk: StreamChunk, isFirstChunk: boolean) {
+  if (birdPhase === 'idle') return;
+
+  // Extend the cumulative timings so boundary polling and flip scheduling see all words.
+  birdTtsTimings = [...birdTtsTimings, ...chunk.words];
+  // Compute the flip schedule once we have enough timings.
+  if (isFirstChunk || birdTtsFlipScheduledAt === null) {
+    birdTtsFlipScheduledAt = computeFlipScheduleTime();
+  }
+
+  const blobUrl = audioBlobUrlFromBase64(chunk.audio, chunk.format);
+  const audioEl = new Audio(blobUrl);
+
+  if (isFirstChunk || birdWaitingForChunk) {
+    birdWaitingForChunk = false;
+    startChunkPlayback(blobUrl, audioEl, chunk.audioOffset);
+  } else {
+    birdAudioQueue.push({ blobUrl, audioEl, audioOffset: chunk.audioOffset });
+  }
+}
+
+async function readTtsStream(reader: ReadableStreamDefaultReader<Uint8Array>) {
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let firstChunk = true;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (birdPhase === 'idle') {
+        void reader.cancel();
+        return;
+      }
+
+      if (done) {
+        // Flush any partial line (upstream may omit trailing newline).
+        const remaining = buffer.trim();
+        if (remaining) {
+          try {
+            handleStreamChunk(JSON.parse(remaining) as StreamChunk, firstChunk);
+            firstChunk = false;
+          } catch { /* skip malformed */ }
+        }
+        birdStreamDone = true;
+        if (birdWaitingForChunk) {
+          // Audio ended while we were waiting for more chunks — narration done.
+          birdWaitingForChunk = false;
+          handleNarrationEnd();
+        } else if (birdPhase === 'loading') {
+          // Stream finished with no valid audio at all.
+          birdPhase = 'idle';
+        }
+        return;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      let newlineIdx: number;
+      while ((newlineIdx = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, newlineIdx).trim();
+        buffer = buffer.slice(newlineIdx + 1);
+        if (!line) continue;
+        try {
+          handleStreamChunk(JSON.parse(line) as StreamChunk, firstChunk);
+          firstChunk = false;
+        } catch { /* skip malformed */ }
+      }
+    }
+  } catch (e) {
+    if (birdPhase === 'idle') return; // expected — fetch was aborted by cleanupTtsAudio
+    console.warn('TTS stream error', e);
+    birdStreamDone = true;
+    if (birdPhase === 'loading') birdPhase = 'idle';
+  }
 }
 
 /**
@@ -655,7 +771,8 @@ function startBoundaryPolling() {
   if (birdTtsBoundaryInterval) clearInterval(birdTtsBoundaryInterval);
   birdTtsBoundaryInterval = setInterval(() => {
     if (!birdAudioEl || birdAudioEl.paused) return;
-    const t = birdAudioEl.currentTime;
+    // Absolute audio time across all chunks: chunk start offset + element position.
+    const t = birdChunkTimeOffset + birdAudioEl.currentTime;
 
     // Advance the current-word pointer and update the highlight index.
     while (
@@ -698,6 +815,23 @@ function cleanupTtsAudio() {
     URL.revokeObjectURL(birdAudioBlobUrl);
     birdAudioBlobUrl = null;
   }
+  // Clean up any queued (not-yet-playing) chunks.
+  for (const item of birdAudioQueue) {
+    item.audioEl.onplay = null;
+    item.audioEl.onpause = null;
+    item.audioEl.onended = null;
+    item.audioEl.onerror = null;
+    item.audioEl.pause();
+    item.audioEl.src = '';
+    URL.revokeObjectURL(item.blobUrl);
+  }
+  birdAudioQueue = [];
+  birdChunkTimeOffset = 0;
+  birdStreamDone = false;
+  birdWaitingForChunk = false;
+  // Cancel the NDJSON body stream so no further chunks are processed.
+  void birdStreamReader?.cancel();
+  birdStreamReader = null;
   birdTtsTimings = [];
   birdTtsBoundaryIdx = 0;
   birdTtsFlipScheduledAt = null;
@@ -787,8 +921,11 @@ function setBirdRate(rate: number) {
   if (typeof window === 'undefined') return;
   if (birdAudioEl) {
     // TTS path: HTMLAudioElement supports live playbackRate changes.
-    // currentTime is in media time, so word-timing comparisons stay correct.
     birdAudioEl.playbackRate = clamped;
+    // Apply to buffered-but-not-yet-playing chunks too.
+    for (const item of birdAudioQueue) {
+      item.audioEl.playbackRate = clamped;
+    }
   } else if (window.speechSynthesis) {
     // Web Speech has no live rate setter — cancel and restart at new rate.
     window.speechSynthesis.cancel();
@@ -1014,6 +1151,7 @@ function previewVoice() {
   // voices are previewed via Web Speech directly.
   if (isKokoroVoiceUri(draftVoiceURI)) {
     // Short preview via the TTS shim — fire and forget.
+    // Read the first NDJSON chunk (response is now a stream).
     fetch('/api/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1021,8 +1159,13 @@ function previewVoice() {
     })
       .then(async (res) => {
         if (!res.ok) return;
-        const payload = await res.json();
-        const url = audioBlobUrlFromBase64(payload.audio, payload.format);
+        const text = await res.text();
+        const firstLine = text.split('\n').find((l) => l.trim());
+        if (!firstLine) return;
+        let chunk: { audio?: string; format?: string };
+        try { chunk = JSON.parse(firstLine); } catch { return; }
+        if (!chunk.audio || !chunk.format) return;
+        const url = audioBlobUrlFromBase64(chunk.audio, chunk.format);
         const audio = new Audio(url);
         audio.onended = () => URL.revokeObjectURL(url);
         void audio.play();

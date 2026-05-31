@@ -20,6 +20,17 @@ export interface SpeakResponse {
 }
 
 /**
+ * One normalized chunk from the streaming /api/speak NDJSON response.
+ * Each line of the response body deserializes to this shape.
+ */
+export interface StreamChunk {
+  audio: string; // base64-encoded audio for this chunk
+  format: string; // MIME type, e.g. "audio/mpeg"
+  words: WordTiming[]; // timings relative to the full submitted text (char offsets)
+  audioOffset: number; // absolute audio time (seconds) at the start of this chunk
+}
+
+/**
  * Returns true for Kokoro voice slugs (e.g. `af_bella`, `bm_daniel`).
  * Returns false for Web Speech voiceURIs, which typically contain dots,
  * slashes, spaces, or other characters outside the Kokoro slug pattern.

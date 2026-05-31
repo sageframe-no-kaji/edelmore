@@ -6,22 +6,22 @@ import type { RequestHandler } from './$types';
  * POST /api/speak
  *
  * Thin shim that forwards a TTS request to the upstream Kokoro-FastAPI
- * `/dev/captioned_speech` endpoint and returns normalised JSON.
+ * `/dev/captioned_speech` endpoint with stream=true and returns a
+ * newline-delimited JSON (NDJSON) stream to the browser. Each line is a
+ * `StreamChunk` object with normalised word timings and an audioOffset field
+ * so the client can chain Audio elements with correct absolute time tracking.
  *
  * The browser sends:
  *   { text: string; voice: string; speed: number }
  *
- * This endpoint returns:
- *   { audio: string (base64); format: string (MIME); words: WordTiming[] }
+ * This endpoint returns an NDJSON stream where each line is:
+ *   { audio: string (base64); format: string (MIME); words: WordTiming[]; audioOffset: number }
  *
- * Where WordTiming is:
- *   { word: string; start: number; end: number; char_start: number; char_end: number }
+ * audioOffset is the absolute audio time (seconds) at which this chunk starts
+ * in the full synthesised audio, derived from the first word's start_time.
  *
  * On-demand startup: if DOCKER_API_URL and KOKORO_CONTAINER_NAME are set, the
- * shim checks whether the Kokoro container is running before each request. If
- * it is stopped, the shim starts it and polls TTS_VOICES_URL until the model
- * responds (cold start ~15-30 s on an RTX 3050). The bird button stays in
- * 'loading' state throughout — no special browser-side handling needed.
+ * shim checks whether the Kokoro container is running before each request.
  *
  * Env vars:
  *   TTS_URL               — full URL to /dev/captioned_speech
@@ -48,7 +48,7 @@ interface UpstreamPayload {
   timestamps: UpstreamWord[];
 }
 
-// ── Normalised types (returned to the browser) ───────────────────────────────
+// ── Normalised types (streamed to the browser) ────────────────────────────────
 
 interface WordTiming {
   word: string;
@@ -58,10 +58,11 @@ interface WordTiming {
   char_end: number;
 }
 
-interface SpeakResponse {
-  audio: string; // base64
-  format: string; // MIME type
+interface StreamChunk {
+  audio: string;
+  format: string;
   words: WordTiming[];
+  audioOffset: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -83,9 +84,18 @@ function formatToMime(fmt: string): string {
   }
 }
 
-function computeCharOffsets(input: string, words: UpstreamWord[]): WordTiming[] {
-  let cursor = 0;
-  return words.map((w) => {
+/**
+ * Map each upstream word to a WordTiming with character offsets into `input`.
+ * `startCursor` advances across calls so successive chunks don't re-match
+ * earlier words in the same text.
+ */
+function computeCharOffsets(
+  input: string,
+  words: UpstreamWord[],
+  startCursor = 0
+): { timings: WordTiming[]; nextCursor: number } {
+  let cursor = startCursor;
+  const timings = words.map((w) => {
     const idx = input.indexOf(w.word, cursor);
     if (idx === -1) {
       return {
@@ -106,6 +116,7 @@ function computeCharOffsets(input: string, words: UpstreamWord[]): WordTiming[] 
       char_end: charEnd,
     };
   });
+  return { timings, nextCursor: cursor };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -113,10 +124,6 @@ function sleep(ms: number): Promise<void> {
 }
 
 // ── Idle shutdown ─────────────────────────────────────────────────────────────
-//
-// After each successful narration the idle timer is reset. When it fires,
-// the Kokoro container is stopped via the Docker remote API so it releases
-// GPU memory. KOKORO_IDLE_MINUTES defaults to 10.
 
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -146,30 +153,21 @@ async function stopKokoro(): Promise<void> {
 
 // ── On-demand startup ─────────────────────────────────────────────────────────
 
-/**
- * If DOCKER_API_URL and KOKORO_CONTAINER_NAME are configured, ensure the
- * Kokoro container is running before we attempt a TTS request. On a cold
- * start the model takes ~15-30 s to load; we poll the voices endpoint until
- * it responds, then return. Times out silently after 60 s — the TTS request
- * will then fail naturally and the browser falls back to Web Speech.
- */
 async function ensureKokoroRunning(): Promise<void> {
   const dockerApiUrl = env.DOCKER_API_URL;
   const containerName = env.KOKORO_CONTAINER_NAME;
   if (!dockerApiUrl || !containerName) return;
 
-  // Check running state via Docker remote API.
   try {
     const stateRes = await fetch(`${dockerApiUrl}/containers/${containerName}/json`);
     if (stateRes.ok) {
       const data = (await stateRes.json()) as { State: { Running: boolean } };
-      if (data.State.Running) return; // already up — idle timer ticks from last narration
+      if (data.State.Running) return;
     }
   } catch {
-    return; // Docker API unreachable — let TTS fail naturally
+    return;
   }
 
-  // Container is stopped — start it.
   console.log('Kokoro container stopped; starting on demand');
   try {
     await fetch(`${dockerApiUrl}/containers/${containerName}/start`, { method: 'POST' });
@@ -178,7 +176,6 @@ async function ensureKokoroRunning(): Promise<void> {
     return;
   }
 
-  // Poll the voices endpoint until Kokoro's model is loaded and responding.
   const voicesUrl =
     env.TTS_VOICES_URL ?? env.TTS_URL?.replace('/dev/captioned_speech', '/v1/audio/voices');
   if (!voicesUrl) return;
@@ -217,8 +214,6 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   if (!body?.text || typeof body.text !== 'string') throw error(400, 'Missing text');
   if (!body.voice || typeof body.voice !== 'string') throw error(400, 'Missing voice');
 
-  // Start Kokoro on demand if it is stopped (no-op when already running or
-  // when DOCKER_API_URL is not configured).
   await ensureKokoroRunning();
 
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -233,7 +228,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     // Speed handled client-side via HTMLAudioElement.playbackRate — always
     // generate at 1.0 so rate changes don't require a re-fetch.
     speed: 1.0,
-    stream: false,
+    stream: true,
     return_timestamps: true,
   };
 
@@ -254,37 +249,88 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     throw error(502, 'TTS failed');
   }
 
-  let raw: unknown;
-  try {
-    raw = await upstreamResponse.json();
-  } catch (e) {
-    console.error('TTS upstream returned non-JSON:', e instanceof Error ? e.message : e);
-    throw error(502, 'TTS returned unexpected response');
+  const upstreamStream = upstreamResponse.body;
+  if (!upstreamStream) {
+    throw error(502, 'TTS returned empty response');
   }
 
-  if (
-    !raw ||
-    typeof raw !== 'object' ||
-    typeof (raw as Record<string, unknown>).audio !== 'string' ||
-    !Array.isArray((raw as Record<string, unknown>).timestamps)
-  ) {
-    console.error('TTS upstream payload missing required fields');
-    throw error(502, 'TTS returned unexpected response');
-  }
+  const inputText = body.text;
+  const encoder = new TextEncoder();
 
-  const upstream = raw as UpstreamPayload;
+  const stream = new ReadableStream({
+    async start(controller) {
+      const reader = upstreamStream.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let charCursor = 0;
+      let hadOutput = false;
 
-  const responsePayload: SpeakResponse = {
-    audio: upstream.audio,
-    format: formatToMime(upstream.audio_format ?? 'mp3'),
-    words: computeCharOffsets(body.text, upstream.timestamps),
-  };
+      function processLine(line: string): void {
+        if (!line) return;
+        let raw: unknown;
+        try {
+          raw = JSON.parse(line);
+        } catch {
+          return;
+        }
+        if (
+          !raw ||
+          typeof raw !== 'object' ||
+          typeof (raw as Record<string, unknown>).audio !== 'string' ||
+          !Array.isArray((raw as Record<string, unknown>).timestamps)
+        ) {
+          return;
+        }
+        const upstream = raw as UpstreamPayload;
+        const { timings, nextCursor } = computeCharOffsets(
+          inputText,
+          upstream.timestamps,
+          charCursor
+        );
+        charCursor = nextCursor;
 
-  // Narration delivered — reset the idle shutdown clock.
-  resetIdleTimer();
+        const audioOffset = upstream.timestamps.length > 0 ? upstream.timestamps[0].start_time : 0;
 
-  return new Response(JSON.stringify(responsePayload), {
+        const chunk: StreamChunk = {
+          audio: upstream.audio,
+          format: formatToMime(upstream.audio_format ?? 'mp3'),
+          words: timings,
+          audioOffset,
+        };
+        controller.enqueue(encoder.encode(`${JSON.stringify(chunk)}\n`));
+        hadOutput = true;
+      }
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          let newlineIdx = buffer.indexOf('\n');
+          while (newlineIdx !== -1) {
+            processLine(buffer.slice(0, newlineIdx).trim());
+            buffer = buffer.slice(newlineIdx + 1);
+            newlineIdx = buffer.indexOf('\n');
+          }
+        }
+        // Flush any remaining partial line (upstream may omit trailing newline).
+        processLine(buffer.trim());
+
+        controller.close();
+        if (hadOutput) resetIdleTimer();
+      } catch (e) {
+        console.error('TTS stream error:', e instanceof Error ? e.message : e);
+        controller.error(e);
+      }
+    },
+  });
+
+  return new Response(stream, {
     status: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/x-ndjson',
+      'Cache-Control': 'no-cache',
+    },
   });
 };

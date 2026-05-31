@@ -46,8 +46,10 @@ function makeUnauthEvent(body: unknown) {
   } as Parameters<typeof POST>[0];
 }
 
-/** Minimal valid upstream response from /dev/captioned_speech. */
-function makeCaptionedSpeechResponse() {
+/** One upstream chunk in Kokoro's NDJSON streaming format. */
+function makeKokoroChunk(
+  overrides?: Partial<{ audio: string; audio_format: string; timestamps: unknown[] }>
+) {
   return {
     audio: btoa('fake-mp3-bytes'),
     audio_format: 'mp3',
@@ -55,7 +57,29 @@ function makeCaptionedSpeechResponse() {
       { word: 'Hello', start_time: 0.0, end_time: 0.3 },
       { word: 'world', start_time: 0.3, end_time: 0.6 },
     ],
+    ...overrides,
   };
+}
+
+/** Build a mock upstream Response containing one or more NDJSON lines. */
+function makeUpstreamStreamResponse(
+  chunks: object[] = [makeKokoroChunk()],
+  status = 200
+): Response {
+  const ndjson = `${chunks.map((c) => JSON.stringify(c)).join('\n')}\n`;
+  return new Response(ndjson, {
+    status,
+    headers: { 'Content-Type': 'application/x-ndjson' },
+  });
+}
+
+/** Read all NDJSON lines from a streaming Response. */
+async function readNdjson(response: Response): Promise<unknown[]> {
+  const text = await response.text();
+  return text
+    .split('\n')
+    .filter((l) => l.trim())
+    .map((l) => JSON.parse(l));
 }
 
 const originalFetch = globalThis.fetch;
@@ -86,28 +110,35 @@ describe('POST /api/speak', () => {
     });
   });
 
-  it('returns normalised JSON on success', async () => {
+  it('returns NDJSON stream with normalised chunk on success', async () => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      new Response(JSON.stringify(makeCaptionedSpeechResponse()), { status: 200 })
+      makeUpstreamStreamResponse()
     );
 
     const response = await POST(
       makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1.0 })
     );
-    const body = await response.json();
+    expect(response.headers.get('Content-Type')).toContain('ndjson');
 
-    expect(body.audio).toBe(btoa('fake-mp3-bytes'));
-    expect(body.format).toBe('audio/mpeg');
-    expect(Array.isArray(body.words)).toBe(true);
-    expect(body.words).toHaveLength(2);
-    expect(body.words[0]).toMatchObject({
+    const chunks = await readNdjson(response);
+    expect(chunks).toHaveLength(1);
+
+    const chunk = chunks[0] as Record<string, unknown>;
+    expect(typeof chunk.audio).toBe('string');
+    expect(chunk.format).toBe('audio/mpeg');
+    expect(chunk.audioOffset).toBe(0.0);
+    expect(Array.isArray(chunk.words)).toBe(true);
+
+    const words = chunk.words as Array<Record<string, unknown>>;
+    expect(words).toHaveLength(2);
+    expect(words[0]).toMatchObject({
       word: 'Hello',
       start: 0.0,
       end: 0.3,
       char_start: 0,
       char_end: 5,
     });
-    expect(body.words[1]).toMatchObject({
+    expect(words[1]).toMatchObject({
       word: 'world',
       start: 0.3,
       end: 0.6,
@@ -136,19 +167,21 @@ describe('POST /api/speak', () => {
     ).rejects.toMatchObject({ status: 503 });
   });
 
-  it('returns 502 when upstream returns non-JSON', async () => {
+  it('returns 200 with empty stream when upstream returns non-JSON body', async () => {
+    // With streaming, unparse-able upstream lines are silently skipped.
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      new Response('not json', { status: 200 })
+      new Response('not json\n', { status: 200 })
     );
 
-    await expect(
-      POST(makeAuthedEvent({ text: 'hello', voice: 'af_bella', speed: 1.0 }))
-    ).rejects.toMatchObject({ status: 502 });
+    const response = await POST(makeAuthedEvent({ text: 'hello', voice: 'af_bella', speed: 1.0 }));
+    expect(response.status).toBe(200);
+    const chunks = await readNdjson(response);
+    expect(chunks).toHaveLength(0);
   });
 
   it('hits the captioned_speech endpoint, not /v1/audio/speech', async () => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      new Response(JSON.stringify(makeCaptionedSpeechResponse()), { status: 200 })
+      makeUpstreamStreamResponse()
     );
 
     await POST(makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1.0 }));
@@ -158,37 +191,33 @@ describe('POST /api/speak', () => {
 
   it('maps audio_format mp3 to audio/mpeg MIME type', async () => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      new Response(JSON.stringify({ ...makeCaptionedSpeechResponse(), audio_format: 'mp3' }), {
-        status: 200,
-      })
+      makeUpstreamStreamResponse([makeKokoroChunk({ audio_format: 'mp3' })])
     );
 
     const response = await POST(makeAuthedEvent({ text: 'hello', voice: 'af_bella', speed: 1.0 }));
-    const body = await response.json();
-    expect(body.format).toBe('audio/mpeg');
+    const [chunk] = (await readNdjson(response)) as Array<Record<string, unknown>>;
+    expect(chunk.format).toBe('audio/mpeg');
   });
 
   it('maps audio_format wav to audio/wav MIME type', async () => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      new Response(JSON.stringify({ ...makeCaptionedSpeechResponse(), audio_format: 'wav' }), {
-        status: 200,
-      })
+      makeUpstreamStreamResponse([makeKokoroChunk({ audio_format: 'wav' })])
     );
 
     const response = await POST(makeAuthedEvent({ text: 'hello', voice: 'af_bella', speed: 1.0 }));
-    const body = await response.json();
-    expect(body.format).toBe('audio/wav');
+    const [chunk] = (await readNdjson(response)) as Array<Record<string, unknown>>;
+    expect(chunk.format).toBe('audio/wav');
   });
 
-  it('sends stream=false and return_timestamps=true to upstream', async () => {
+  it('sends stream=true and return_timestamps=true to upstream', async () => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      new Response(JSON.stringify(makeCaptionedSpeechResponse()), { status: 200 })
+      makeUpstreamStreamResponse()
     );
 
     await POST(makeAuthedEvent({ text: 'hello', voice: 'af_bella', speed: 1.0 }));
     const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     const sentBody = JSON.parse(callArgs[1].body as string);
-    expect(sentBody.stream).toBe(false);
+    expect(sentBody.stream).toBe(true);
     expect(sentBody.return_timestamps).toBe(true);
   });
 
@@ -204,14 +233,16 @@ describe('POST /api/speak', () => {
     }
   });
 
-  it('returns 502 when upstream JSON is missing required fields', async () => {
+  it('skips upstream chunks that are missing required fields', async () => {
+    // Chunk with no timestamps array — should be skipped silently.
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      new Response(JSON.stringify({ audio: 'x' }), { status: 200 })
+      new Response(`${JSON.stringify({ audio: 'x' })}\n`, { status: 200 })
     );
 
-    await expect(
-      POST(makeAuthedEvent({ text: 'hello', voice: 'af_bella', speed: 1.0 }))
-    ).rejects.toMatchObject({ status: 502 });
+    const response = await POST(makeAuthedEvent({ text: 'hello', voice: 'af_bella', speed: 1.0 }));
+    expect(response.status).toBe(200);
+    const chunks = await readNdjson(response);
+    expect(chunks).toHaveLength(0);
   });
 
   it.each([
@@ -221,41 +252,90 @@ describe('POST /api/speak', () => {
     ['ogg', 'audio/mpeg'], // unknown → default
   ])('maps audio_format %s to %s', async (fmt, mime) => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      new Response(JSON.stringify({ ...makeCaptionedSpeechResponse(), audio_format: fmt }), {
-        status: 200,
-      })
+      makeUpstreamStreamResponse([makeKokoroChunk({ audio_format: fmt })])
     );
 
     const response = await POST(makeAuthedEvent({ text: 'hello', voice: 'af_bella', speed: 1.0 }));
-    const body = await response.json();
-    expect(body.format).toBe(mime);
+    const [chunk] = (await readNdjson(response)) as Array<Record<string, unknown>>;
+    expect(chunk.format).toBe(mime);
   });
 
   it('emits cursor-based offsets for a word not present in the source text', async () => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
+      makeUpstreamStreamResponse([
+        {
           audio: btoa('x'),
           audio_format: 'mp3',
           timestamps: [{ word: 'zzz', start_time: 0, end_time: 0.1 }],
-        }),
-        { status: 200 }
-      )
+        },
+      ])
     );
 
     const response = await POST(
       makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1 })
     );
-    const body = await response.json();
-    // 'zzz' is not in 'Hello world', so char offsets collapse to the cursor (0).
-    expect(body.words[0]).toMatchObject({ word: 'zzz', char_start: 0, char_end: 0 });
+    const [chunk] = (await readNdjson(response)) as Array<{
+      words: Array<Record<string, unknown>>;
+    }>;
+    // 'zzz' is not in 'Hello world' so char offsets collapse to the cursor (0).
+    expect(chunk.words[0]).toMatchObject({ word: 'zzz', char_start: 0, char_end: 0 });
+  });
+
+  it('correctly computes char offsets across multiple upstream chunks', async () => {
+    // Two upstream chunks: first has "Hello", second has "world".
+    // The char cursor must advance between chunks so "world" is found after "Hello ".
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      makeUpstreamStreamResponse([
+        {
+          audio: btoa('c1'),
+          audio_format: 'mp3',
+          timestamps: [{ word: 'Hello', start_time: 0.0, end_time: 0.3 }],
+        },
+        {
+          audio: btoa('c2'),
+          audio_format: 'mp3',
+          timestamps: [{ word: 'world', start_time: 0.3, end_time: 0.6 }],
+        },
+      ])
+    );
+
+    const response = await POST(
+      makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1 })
+    );
+    const chunks = (await readNdjson(response)) as Array<{
+      words: Array<Record<string, unknown>>;
+      audioOffset: number;
+    }>;
+    expect(chunks).toHaveLength(2);
+
+    expect(chunks[0].words[0]).toMatchObject({ word: 'Hello', char_start: 0, char_end: 5 });
+    expect(chunks[0].audioOffset).toBe(0.0);
+
+    expect(chunks[1].words[0]).toMatchObject({ word: 'world', char_start: 6, char_end: 11 });
+    expect(chunks[1].audioOffset).toBe(0.3);
+  });
+
+  it('sets audioOffset to first word start_time', async () => {
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      makeUpstreamStreamResponse([
+        makeKokoroChunk({
+          timestamps: [
+            { word: 'Hello', start_time: 1.5, end_time: 1.8 },
+            { word: 'world', start_time: 1.8, end_time: 2.1 },
+          ],
+        }),
+      ])
+    );
+
+    const response = await POST(
+      makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1.0 })
+    );
+    const [chunk] = (await readNdjson(response)) as Array<{ audioOffset: number }>;
+    expect(chunk.audioOffset).toBe(1.5);
   });
 });
 
 // ── On-demand Kokoro lifecycle (DOCKER_API_URL configured) ─────────────────────
-//
-// These tests configure the Docker remote API so ensureKokoroRunning() and the
-// idle-shutdown timer become active, then drive the fake-timer clock.
 
 describe('POST /api/speak — on-demand Kokoro', () => {
   const dockerUrl = 'http://docker.test:2376';
@@ -277,21 +357,16 @@ describe('POST /api/speak — on-demand Kokoro', () => {
     env.KOKORO_IDLE_MINUTES = undefined;
   });
 
-  function speakResponse() {
-    return new Response(JSON.stringify(makeCaptionedSpeechResponse()), { status: 200 });
-  }
-
   it('skips startup when the container is already running', async () => {
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
     fetchMock
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ State: { Running: true } }), { status: 200 })
       )
-      .mockResolvedValueOnce(speakResponse());
+      .mockResolvedValueOnce(makeUpstreamStreamResponse());
 
     await POST(makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1 }));
 
-    // First call: state probe. Second call: TTS. No /start.
     expect(String(fetchMock.mock.calls[0][0])).toContain(`/containers/${containerName}/json`);
     expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/start'))).toBe(false);
   });
@@ -304,22 +379,22 @@ describe('POST /api/speak — on-demand Kokoro', () => {
       ) // state
       .mockResolvedValueOnce(new Response(null, { status: 204 })) // start
       .mockResolvedValueOnce(new Response('[]', { status: 200 })) // voices readiness poll
-      .mockResolvedValueOnce(speakResponse()); // TTS
+      .mockResolvedValueOnce(makeUpstreamStreamResponse()); // TTS
 
     const p = POST(makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1 }));
-    await vi.advanceTimersByTimeAsync(2000); // drive the readiness sleep
+    await vi.advanceTimersByTimeAsync(2000);
     const response = await p;
-    const body = await response.json();
+    const chunks = await readNdjson(response);
 
-    expect(body.words).toHaveLength(2);
+    expect(chunks).toHaveLength(1);
     expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/start'))).toBe(true);
   });
 
   it('continues when the Docker API is unreachable on the state probe', async () => {
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
     fetchMock
-      .mockRejectedValueOnce(new TypeError('docker down')) // state probe throws → return early
-      .mockResolvedValueOnce(speakResponse()); // TTS still attempted
+      .mockRejectedValueOnce(new TypeError('docker down'))
+      .mockResolvedValueOnce(makeUpstreamStreamResponse());
 
     const response = await POST(
       makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1 })
@@ -334,7 +409,7 @@ describe('POST /api/speak — on-demand Kokoro', () => {
         new Response(JSON.stringify({ State: { Running: false } }), { status: 200 })
       ) // state
       .mockRejectedValueOnce(new TypeError('start failed')) // start throws → return
-      .mockResolvedValueOnce(speakResponse()); // TTS
+      .mockResolvedValueOnce(makeUpstreamStreamResponse()); // TTS
 
     const response = await POST(
       makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1 })
@@ -348,11 +423,15 @@ describe('POST /api/speak — on-demand Kokoro', () => {
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ State: { Running: true } }), { status: 200 })
       ) // state
-      .mockResolvedValueOnce(speakResponse()) // TTS — resets idle timer
+      .mockResolvedValueOnce(makeUpstreamStreamResponse()) // TTS — resets idle timer
       .mockResolvedValueOnce(new Response(null, { status: 204 })); // stop
 
-    await POST(makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1 }));
-    await vi.advanceTimersByTimeAsync(5 * 60_000); // KOKORO_IDLE_MINUTES
+    const response = await POST(
+      makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1 })
+    );
+    // Consume the stream so the idle timer fires.
+    await response.text();
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
 
     expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/stop'))).toBe(true);
   });
