@@ -490,6 +490,9 @@ let birdLastAdvancedFromSpread = -1;
 // Set to true when the bird itself triggers a flip; consumed by the
 // spread-watching effect so the bird isn't stopped by its own page-turn.
 let birdInitiatedFlip = false;
+// Set when the bird itself ends a spread and wants to continue on the next one.
+// Consumed by the spread-watching effect after the flip animation completes.
+let birdAutoAdvancePending = false;
 
 // ── TTS (Kokoro) path state ───────────────────────────────────────────────────
 // These are only live during Kokoro TTS playback. All are cleaned up by
@@ -507,6 +510,7 @@ function stopBird() {
     window.speechSynthesis.cancel();
   }
   cleanupTtsAudio();
+  birdAutoAdvancePending = false;
   birdPhase = 'idle';
   currentNarrationCharIndex = null;
 }
@@ -520,6 +524,12 @@ $effect(() => {
   untrack(() => {
     if (birdInitiatedFlip) {
       birdInitiatedFlip = false;
+      if (birdAutoAdvancePending) {
+        birdAutoAdvancePending = false;
+        // Start narration for the new spread from its beginning.
+        const startOffset = entryPageSpread === 0 ? 0 : (splitPoints[entryPageSpread * 2 - 1] ?? 0);
+        void speakFromOffset(startOffset);
+      }
       return;
     }
     if (birdPhase !== 'idle') stopBird();
@@ -548,7 +558,9 @@ async function speakFromOffset(offset: number) {
 async function speakFromOffsetViaTts(offset: number) {
   cleanupTtsAudio();
 
-  const textFromHere = content.slice(offset);
+  // Synthesize only the current spread — fast startup, auto-continue on end.
+  const spreadEnd = splitPoints[entryPageSpread * 2 + 1]; // undefined = last spread
+  const textFromHere = content.slice(offset, spreadEnd);
   if (!textFromHere.trim()) return;
 
   birdPhase = 'loading';
@@ -594,8 +606,17 @@ async function speakFromOffsetViaTts(offset: number) {
   };
   birdAudioEl.onended = () => {
     cleanupTtsAudio();
-    birdPhase = 'idle';
     currentNarrationCharIndex = null;
+    const hasNextSpread = entryPageSpread < entrySpreadCount - 1;
+    if (hasNextSpread) {
+      // Auto-advance: flip to next spread and continue narrating.
+      birdPhase = 'loading';
+      birdAutoAdvancePending = true;
+      birdInitiatedFlip = true;
+      flip('forward', () => { entryPageSpread += 1; });
+    } else {
+      birdPhase = 'idle';
+    }
   };
   birdAudioEl.onerror = () => {
     cleanupTtsAudio();
@@ -1504,22 +1525,23 @@ $effect(() => {
 														{/each}
 													{:else}
 														{#if draftVoiceURI && isKokoroVoiceUri(draftVoiceURI)}
-															<!-- Kokoro voice is saved but server is offline — show it as a
-															     disabled placeholder so the picker isn't blank. Reading aloud
-															     falls back to Web Speech until Kokoro comes online. -->
-															<option value={draftVoiceURI} disabled>
-																{KOKORO_VOICE_LABELS[draftVoiceURI] ?? draftVoiceURI} (offline)
+															<!-- Kokoro voice saved but server offline — show as selectable
+															     so it stays saved correctly; narration falls back to browser
+															     voices until Kokoro is reachable again. -->
+															<option value={draftVoiceURI}>
+																{KOKORO_VOICE_LABELS[draftVoiceURI] ?? draftVoiceURI}
 															</option>
+														{:else}
+															{#each browserVoiceOptions as v (v.uri)}
+																<option value={v.uri}>{v.name} ({v.lang})</option>
+															{/each}
 														{/if}
-														{#each browserVoiceOptions as v (v.uri)}
-															<option value={v.uri}>{v.name} ({v.lang})</option>
-														{/each}
 													{/if}
 												</select>
 												<button type="button" onclick={previewVoice} aria-label="Preview voice" class="w-7 h-7 border border-stone-300 text-stone-500 text-sm leading-none hover:border-stone-500 hover:text-ornament-gold transition-colors flex items-center justify-center">▶</button>
 											</div>
-											{#if kokoroOffline}
-												<p class="text-[0.6rem] italic text-stone-400 mt-1">Voice server is offline — browser voices only until it's available.</p>
+											{#if kokoroOffline && draftVoiceURI && isKokoroVoiceUri(draftVoiceURI)}
+												<p class="text-[0.6rem] italic text-stone-400 mt-1">Voice server is offline — narration will use browser voices until it's back.</p>
 											{/if}
 										{/if}
 									</section>
@@ -1712,12 +1734,6 @@ $effect(() => {
 										</button>
 									</div>
 								</div>
-								{#if canFlipPrev}
-									<button type="button" onclick={onFlipPrev} class="spell-page-nav" aria-label="Previous page">←</button>
-								{/if}
-								{#if canFlipNext}
-									<button type="button" onclick={onFlipNext} class="spell-page-nav" aria-label="Next page">→</button>
-								{/if}
 								<button type="button" onclick={() => { void flip('backward', () => { spreadState = { kind: 'toc' }; }); }} class="spell-entries" aria-label="Recent entries">
 									<img src="/entries.svg" style="width: 100%; height: 100%; object-fit: contain" alt="" />
 								</button>
