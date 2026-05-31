@@ -27,8 +27,12 @@ import type { RequestHandler } from './$types';
  *   TTS_URL               — full URL to /dev/captioned_speech
  *   TTS_VOICES_URL        — URL to /v1/audio/voices (used for readiness polling)
  *   TTS_API_KEY           — optional bearer token
- *   DOCKER_API_URL        — Docker remote API base, e.g. http://192.168.1.22:2376
- *   KOKORO_CONTAINER_NAME — container to start on demand, e.g. svc-kokoro
+ *   TTS_UNLOAD_URL        — URL to /dev/unload (fork path: unloads model from VRAM
+ *                           without stopping the container; set this when the
+ *                           sageframe-no-kaji/Kokoro-FastAPI fork is deployed)
+ *   KOKORO_IDLE_MINUTES   — minutes of silence before unload/stop (default 10)
+ *   DOCKER_API_URL        — Docker remote API base (legacy; unused when TTS_UNLOAD_URL is set)
+ *   KOKORO_CONTAINER_NAME — container to start on demand (legacy; unused when TTS_UNLOAD_URL is set)
  *
  * Logging: failure modes only. Diary text, audio bytes, and word timings are
  * never logged.
@@ -140,6 +144,19 @@ function resetIdleTimer(): void {
 }
 
 async function stopKokoro(): Promise<void> {
+  const unloadUrl = env.TTS_UNLOAD_URL;
+  if (unloadUrl) {
+    // Fork path: call /dev/unload to release GPU VRAM without stopping the container.
+    // The model reloads lazily on the next TTS request.
+    try {
+      await fetch(unloadUrl, { method: 'POST' });
+      console.log('Kokoro model unloaded after idle timeout');
+    } catch (e) {
+      console.error('Failed to unload Kokoro model:', e instanceof Error ? e.message : e);
+    }
+    return;
+  }
+  // Legacy path: stop the container via the Docker remote API.
   const dockerApiUrl = env.DOCKER_API_URL;
   const containerName = env.KOKORO_CONTAINER_NAME;
   if (!dockerApiUrl || !containerName) return;
@@ -154,6 +171,11 @@ async function stopKokoro(): Promise<void> {
 // ── On-demand startup ─────────────────────────────────────────────────────────
 
 async function ensureKokoroRunning(): Promise<void> {
+  // Fork path: the model reloads automatically on the next TTS request — no
+  // container management needed.
+  if (env.TTS_UNLOAD_URL) return;
+
+  // Legacy path: start the container via the Docker remote API if it is stopped.
   const dockerApiUrl = env.DOCKER_API_URL;
   const containerName = env.KOKORO_CONTAINER_NAME;
   if (!dockerApiUrl || !containerName) return;

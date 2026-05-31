@@ -436,3 +436,69 @@ describe('POST /api/speak — on-demand Kokoro', () => {
     expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/stop'))).toBe(true);
   });
 });
+
+// ── Fork path: TTS_UNLOAD_URL configured ──────────────────────────────────────
+//
+// When TTS_UNLOAD_URL is set the shim uses /dev/unload instead of the Docker
+// remote API: ensureKokoroRunning becomes a no-op (model reloads lazily) and
+// stopKokoro POSTs to the unload endpoint.
+
+describe('POST /api/speak — TTS_UNLOAD_URL fork path', () => {
+  const unloadUrl = 'http://shingan.test:8880/dev/unload';
+
+  beforeEach(() => {
+    globalThis.fetch = vi.fn();
+    env.TTS_UNLOAD_URL = unloadUrl;
+    env.KOKORO_IDLE_MINUTES = '5';
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    globalThis.fetch = originalFetch;
+    env.TTS_UNLOAD_URL = undefined;
+    env.KOKORO_IDLE_MINUTES = undefined;
+  });
+
+  it('skips Docker startup entirely — only the TTS call is made', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(makeUpstreamStreamResponse());
+
+    await POST(makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1 }));
+
+    // Exactly one fetch call: the TTS request. No Docker state probe or /start.
+    expect(fetchMock.mock.calls).toHaveLength(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('captioned_speech');
+  });
+
+  it('calls the unload endpoint after the idle timeout instead of stopping the container', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockResolvedValueOnce(makeUpstreamStreamResponse()) // TTS — resets idle timer
+      .mockResolvedValueOnce(new Response(null, { status: 200 })); // unload
+
+    const response = await POST(
+      makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1 })
+    );
+    await response.text();
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+    const calls = (fetchMock as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.some((c) => String(c[0]) === unloadUrl)).toBe(true);
+    expect(calls.every((c) => !String(c[0]).endsWith('/stop'))).toBe(true);
+  });
+
+  it('continues silently when the unload call fails', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockResolvedValueOnce(makeUpstreamStreamResponse())
+      .mockRejectedValueOnce(new TypeError('unload failed'));
+
+    const response = await POST(
+      makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1 })
+    );
+    await response.text();
+    // Should not throw even when unload errors.
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+  });
+});
