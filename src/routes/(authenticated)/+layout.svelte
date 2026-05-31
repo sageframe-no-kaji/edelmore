@@ -1099,7 +1099,11 @@ onMount(() => {
 
   function onKeyDown(e: KeyboardEvent) {
     const tag = (document.activeElement as HTMLElement)?.tagName;
-    if (tag === 'TEXTAREA' || tag === 'INPUT') return;
+    const inEditor = tag === 'TEXTAREA' || tag === 'INPUT';
+    // Bare arrow keys: page navigation outside editors only.
+    // Cmd/Ctrl+Arrow: page navigation always (doesn't conflict with text editing).
+    const withMod = e.metaKey || e.ctrlKey;
+    if (inEditor && !withMod) return;
     if (e.key === 'ArrowRight' && canFlipNext) {
       e.preventDefault();
       onFlipNext();
@@ -1234,16 +1238,19 @@ $effect(() => {
 $effect(() => {
   const sp = splitPoints;
   const spread = entryPageSpread;
-  const restore = pendingCursorRestore;
-  pendingCursorRestore = null;
   const c = untrack(() => content);
   tick().then(() => {
+    // Read and clear the restore inside tick so it's consumed once, after all
+    // reactive state has settled (including entryPageSpread from a flip callback).
+    const restore = pendingCursorRestore;
+    pendingCursorRestore = null;
     if (textareaEl) {
       const ls = spread === 0 ? 0 : (sp[spread * 2 - 1] ?? 0);
       const le = sp[spread * 2];
       textareaEl.value = c.slice(ls, le);
       if (restore?.side === 'left') {
         const localPos = Math.max(0, Math.min(restore.absPos - ls, textareaEl.value.length));
+        textareaEl.focus();
         textareaEl.setSelectionRange(localPos, localPos);
       }
     }
@@ -1253,6 +1260,7 @@ $effect(() => {
       rightTextareaEl.value = c.slice(rs, re);
       if (restore?.side === 'right') {
         const localPos = Math.max(0, Math.min(restore.absPos - rs, rightTextareaEl.value.length));
+        rightTextareaEl.focus();
         rightTextareaEl.setSelectionRange(localPos, localPos);
       }
     }
@@ -1378,6 +1386,56 @@ $effect(() => {
 									bind:this={textareaEl}
 									onfocus={() => { activeEditor = 'left'; lastActiveEditor = 'left'; }}
 									onblur={() => { activeEditor = null; }}
+									onkeydown={(e) => {
+										const ta = e.currentTarget;
+										const atEnd = ta.selectionStart === ta.selectionEnd && ta.selectionStart === ta.value.length;
+										const atStart = ta.selectionStart === 0 && ta.selectionEnd === 0;
+										if (e.key === 'ArrowRight' && atEnd && !e.metaKey && !e.ctrlKey) {
+											if (rightTextareaEl) {
+												e.preventDefault();
+												rightTextareaEl.focus();
+												rightTextareaEl.setSelectionRange(0, 0);
+											} else if (canFlipNext) {
+												e.preventDefault();
+												onFlipNext();
+											}
+										} else if (e.key === 'ArrowLeft' && atStart && !e.metaKey && !e.ctrlKey) {
+											if (canFlipPrev && entryPageSpread > 0) {
+												e.preventDefault();
+												const prev = entryPageSpread - 1;
+												const prevRightEnd = splitPoints[prev * 2 + 1];
+												const prevLeftEnd = splitPoints[prev * 2];
+												if (prevRightEnd !== undefined) pendingCursorRestore = { absPos: prevRightEnd, side: 'right' };
+												else if (prevLeftEnd !== undefined) pendingCursorRestore = { absPos: prevLeftEnd, side: 'left' };
+												onFlipPrev();
+											}
+										} else if (e.key === 'Backspace' && atStart && entryPageSpread > 0) {
+											// Backspace at start of left page — flip to previous spread (same as ←).
+											e.preventDefault();
+											const prev = entryPageSpread - 1;
+											const prevRightEnd = splitPoints[prev * 2 + 1];
+											const prevLeftEnd = splitPoints[prev * 2];
+											if (prevRightEnd !== undefined) pendingCursorRestore = { absPos: prevRightEnd, side: 'right' };
+											else if (prevLeftEnd !== undefined) pendingCursorRestore = { absPos: prevLeftEnd, side: 'left' };
+											onFlipPrev();
+										} else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.metaKey && !e.ctrlKey) {
+											const before = ta.selectionStart;
+											setTimeout(() => {
+												if (ta.selectionStart !== before) return;
+												if (e.key === 'ArrowDown') {
+													if (rightTextareaEl) { rightTextareaEl.focus(); rightTextareaEl.setSelectionRange(0, 0); }
+													else if (canFlipNext) onFlipNext();
+												} else if (canFlipPrev && entryPageSpread > 0) {
+													const prev = entryPageSpread - 1;
+													const prevRightEnd = splitPoints[prev * 2 + 1];
+													const prevLeftEnd = splitPoints[prev * 2];
+													if (prevRightEnd !== undefined) pendingCursorRestore = { absPos: prevRightEnd, side: 'right' };
+													else if (prevLeftEnd !== undefined) pendingCursorRestore = { absPos: prevLeftEnd, side: 'left' };
+													onFlipPrev();
+												}
+											}, 0);
+										}
+									}}
 									oninput={(e) => {
 										const leftEnd = splitPoints[entryPageSpread * 2];
 										pendingCursorRestore = { absPos: leftStart + e.currentTarget.selectionStart, side: 'left' };
@@ -1512,6 +1570,49 @@ $effect(() => {
 									bind:this={rightTextareaEl}
 									onfocus={() => { activeEditor = 'right'; lastActiveEditor = 'right'; }}
 									onblur={() => { activeEditor = null; }}
+									onkeydown={(e) => {
+										const ta = e.currentTarget;
+										const atEnd = ta.selectionStart === ta.selectionEnd && ta.selectionStart === ta.value.length;
+										const atStart = ta.selectionStart === 0 && ta.selectionEnd === 0;
+										if (e.key === 'ArrowRight' && atEnd && !e.metaKey && !e.ctrlKey) {
+											if (canFlipNext) {
+												e.preventDefault();
+												// Cursor should land at start of the new spread's left page.
+												pendingCursorRestore = { absPos: splitPoints[entryPageSpread * 2 + 1] ?? 0, side: 'left' };
+												onFlipNext();
+											}
+										} else if (e.key === 'ArrowLeft' && atStart && !e.metaKey && !e.ctrlKey) {
+											if (textareaEl) {
+												e.preventDefault();
+												textareaEl.focus();
+												textareaEl.setSelectionRange(textareaEl.value.length, textareaEl.value.length);
+											}
+										} else if (e.key === 'Backspace' && atStart) {
+											// Backspace at start of right page — delete the char just before
+											// this page's split point and merge content back to the left page.
+											const rStart = splitPoints[entryPageSpread * 2];
+											if (rStart !== undefined && rStart > 0) {
+												e.preventDefault();
+												content = content.slice(0, rStart - 1) + content.slice(rStart);
+												pendingCursorRestore = { absPos: rStart - 1, side: 'left' };
+											}
+										} else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.metaKey && !e.ctrlKey) {
+											const before = ta.selectionStart;
+											const spreadAtKey = entryPageSpread;
+											setTimeout(() => {
+												if (ta.selectionStart !== before) return;
+												if (e.key === 'ArrowDown') {
+													if (canFlipNext) {
+														pendingCursorRestore = { absPos: splitPoints[spreadAtKey * 2 + 1] ?? 0, side: 'left' };
+														onFlipNext();
+													}
+												} else if (textareaEl) {
+													textareaEl.focus();
+													textareaEl.setSelectionRange(textareaEl.value.length, textareaEl.value.length);
+												}
+											}, 0);
+										}
+									}}
 									oninput={(e) => {
 										const rightEnd = splitPoints[entryPageSpread * 2 + 1];
 										pendingCursorRestore = { absPos: rightStart + e.currentTarget.selectionStart, side: 'right' };
@@ -1611,6 +1712,12 @@ $effect(() => {
 										</button>
 									</div>
 								</div>
+								{#if canFlipPrev}
+									<button type="button" onclick={onFlipPrev} class="spell-page-nav" aria-label="Previous page">←</button>
+								{/if}
+								{#if canFlipNext}
+									<button type="button" onclick={onFlipNext} class="spell-page-nav" aria-label="Next page">→</button>
+								{/if}
 								<button type="button" onclick={() => { void flip('backward', () => { spreadState = { kind: 'toc' }; }); }} class="spell-entries" aria-label="Recent entries">
 									<img src="/entries.svg" style="width: 100%; height: 100%; object-fit: contain" alt="" />
 								</button>
@@ -2093,6 +2200,20 @@ $effect(() => {
 		align-items: center;
 		gap: 0.4cqi;
 	}
+
+	.spell-page-nav {
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		font-family: serif;
+		font-size: 1.1cqi;
+		color: var(--ink-600, #6b5c4e);
+		padding: 0 0.2cqi;
+		opacity: 0.6;
+		transition: opacity 0.15s;
+		line-height: 1;
+	}
+	.spell-page-nav:hover { opacity: 1; }
 
 	.spell-settings,
 	.spell-today,
