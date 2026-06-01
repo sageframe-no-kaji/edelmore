@@ -43,6 +43,6 @@ ho-process/
 # Test coverage
 coverage/
 
-# Reference images
-*.jpg
-*.png
+# Working/reference images (old variants not shipped in the app)
+static/girls-old.png
+static/label-old.png
