@@ -37,7 +37,7 @@ function showError(message: string) {
   }, ERROR_DISPLAY_MS);
 }
 
-async function start(insert: (text: string) => void) {
+async function start(insert: (text: string) => void, onstart?: () => void) {
   if (starting || get(micState).phase !== 'idle') return;
   starting = true;
   activeInsert = insert;
@@ -56,6 +56,9 @@ async function start(insert: (text: string) => void) {
     mediaRecorder.start(500);
     recordingStart = Date.now();
     micState.set({ phase: 'recording', errorMessage: '', elapsed: 0 });
+    // Recording has actually begun — let the host capture the insertion anchor
+    // (the absolute content offset the transcription will land at).
+    onstart?.();
     elapsedTimer = setInterval(() => {
       const elapsed = Math.floor((Date.now() - recordingStart) / 1000);
       micState.update((state) => ({ ...state, elapsed }));
@@ -155,11 +158,13 @@ async function stopAndProcess() {
 <script lang="ts">
 type Props = {
   oninsert: (text: string) => void;
+  /** Called the moment recording begins — the host captures the insertion anchor here. */
+  onstart?: () => void;
   /** Optional aria-label override. */
   ariaLabel?: string;
 };
 
-const { oninsert, ariaLabel }: Props = $props();
+const { oninsert, onstart, ariaLabel }: Props = $props();
 
 let holdTimer: ReturnType<typeof setTimeout> | null = null;
 // Swallows the synthetic click that follows a hold-to-cancel release.
@@ -191,7 +196,7 @@ function onClick() {
     return;
   }
   const phase = get(micState).phase;
-  if (phase === 'idle') void start(oninsert);
+  if (phase === 'idle') void start(oninsert, onstart);
   else if (phase === 'recording') void stopAndProcess();
 }
 

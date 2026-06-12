@@ -10,8 +10,7 @@ import ReaderView from '$lib/components/ReaderView.svelte';
 import Spread from '$lib/components/Spread.svelte';
 import TocPage from '$lib/components/TocPage.svelte';
 import { findCover } from '$lib/covers.js';
-import { insertAtCursor } from '$lib/cursor.js';
-import { applyPageEdit } from '$lib/content.js';
+import { applyPageEdit, insertAtAnchor, sideForOffset, spreadForOffset } from '$lib/content.js';
 import { todayIso } from '$lib/dates.js';
 import type { EntryDatePreview } from '$lib/db.js';
 import {
@@ -422,43 +421,42 @@ async function navigateTo(date: string) {
   await goto(`/${date}`);
 }
 
-/* v8 ignore next 35 */
-function handleTranscriptionInsert(text: string) {
-  if (!text) return;
+// Voice anchor — absolute offset into `content`, captured the moment recording
+// starts. The transcription lands here regardless of page flips, reflow, or
+// spread changes during the recording. null = no anchor captured; append at the
+// end of the entry.
+let voiceAnchor: number | null = null;
+// Absolute cursor position of a just-landed voice insert. Consumed by the
+// pagination effect once new splitPoints exist for the grown content — it jumps
+// to the spread containing the insertion and restores the cursor there.
+let pendingVoiceRestore: number | null = null;
 
-  // Target the textarea the user was LAST writing in (sticky across blur).
-  // The user just clicked the mic-quill button, so activeEditor is null —
-  // lastActiveEditor remembers which side they came from.
+function handleRecordingStart() {
+  // The user just clicked the mic button, so activeEditor is already null —
+  // lastActiveEditor remembers which side they were writing on (sticky across
+  // blur). Recording from outside an entry (toc, settings) has no textarea;
+  // the transcription appends to the end of the entry.
   const target = lastActiveEditor === 'right' ? rightTextareaEl : textareaEl;
-
-  if (!target) {
-    // No textarea available (rare — would mean entry state but textareas not mounted).
-    // Append to content with a leading space if needed.
-    const sep = content && !/\s$/.test(content) ? ' ' : '';
-    content = content + sep + text;
+  if (!target || spreadState.kind !== 'entry') {
+    voiceAnchor = content.length;
     return;
   }
+  const pageStart =
+    lastActiveEditor === 'right'
+      ? (splitPoints[entryPageSpread * 2] ?? 0)
+      : entryPageSpread === 0
+        ? 0
+        : (splitPoints[entryPageSpread * 2 - 1] ?? 0);
+  voiceAnchor = pageStart + target.selectionStart;
+}
 
-  const { newValue, cursorPos } = insertAtCursor(target, text);
-  target.value = newValue;
-
-  // Reconstruct `content` from the textarea's slice — same pattern as the
-  // oninput handlers on the entry textareas.
-  if (target === rightTextareaEl) {
-    const rightStart = splitPoints[entryPageSpread * 2];
-    const rightEnd = splitPoints[entryPageSpread * 2 + 1];
-    if (rightStart === undefined) return;
-    const suffix = rightEnd !== undefined ? content.slice(rightEnd) : '';
-    content = content.slice(0, rightStart) + target.value + suffix;
-  } else {
-    const leftStart = entryPageSpread === 0 ? 0 : (splitPoints[entryPageSpread * 2 - 1] ?? 0);
-    const leftEnd = splitPoints[entryPageSpread * 2];
-    const suffix = leftEnd !== undefined ? content.slice(leftEnd) : '';
-    content = content.slice(0, leftStart) + target.value + suffix;
-  }
-
-  target.setSelectionRange(cursorPos, cursorPos);
-  target.focus();
+function handleTranscriptionInsert(text: string) {
+  if (!text) return;
+  const anchor = voiceAnchor ?? content.length;
+  voiceAnchor = null;
+  const result = insertAtAnchor(content, anchor, text);
+  content = result.content;
+  pendingVoiceRestore = result.cursorPos;
 }
 
 function onFlipNext() {
@@ -1519,6 +1517,16 @@ $effect(() => {
     splitPoints = points;
     const newSpreadCount = Math.floor(points.length / 2) + 1;
     if (entryPageSpread >= newSpreadCount) entryPageSpread = newSpreadCount - 1;
+    // A voice insert just landed: now that the splits reflect the grown
+    // content, jump to the spread containing the insertion and queue the
+    // cursor restore at its end ("the recording goes where it started").
+    if (pendingVoiceRestore !== null) {
+      const pos = pendingVoiceRestore;
+      pendingVoiceRestore = null;
+      const spread = spreadForOffset(points, pos);
+      entryPageSpread = spread;
+      pendingCursorRestore = { absPos: pos, side: sideForOffset(points, spread, pos) };
+    }
   }, 50);
   return () => clearTimeout(timer);
 });
@@ -1955,7 +1963,7 @@ $effect(() => {
 			</Spread>
 				{#if spreadState.kind === 'entry'}
 					<div class="page-mic-quill">
-						<MicQuill oninsert={handleTranscriptionInsert} />
+						<MicQuill oninsert={handleTranscriptionInsert} onstart={handleRecordingStart} />
 					</div>
 				{/if}
 				<div class="shell-seam" aria-hidden="true"></div>
@@ -2013,7 +2021,7 @@ $effect(() => {
 									</div>
 								</div>
 								<div class="spell-quill">
-									<MicQuill oninsert={handleTranscriptionInsert} />
+									<MicQuill oninsert={handleTranscriptionInsert} onstart={handleRecordingStart} />
 								</div>
 							{/if}
 						</div>
@@ -2058,7 +2066,7 @@ $effect(() => {
 				</span>
 				<div class="flex items-center gap-3">
 					<div class="mobile-mic-quill">
-						<MicQuill oninsert={handleTranscriptionInsert} />
+						<MicQuill oninsert={handleTranscriptionInsert} onstart={handleRecordingStart} />
 					</div>
 					<button
 						type="button"
