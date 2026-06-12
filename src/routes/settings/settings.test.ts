@@ -113,6 +113,55 @@ describe('actions.saveSettings', () => {
     expect(result?.data?.error).toBe('That display name is already in use.');
   });
 
+  it('does NOT change the PIN when the save fails on a duplicate username', async () => {
+    // Regression: the PIN was written before the username uniqueness check
+    // could fail — a rejected save still silently changed the PIN.
+    createUser(db, 'Isla', 'hash2');
+    const before = db.prepare('SELECT pin_hash FROM users WHERE id = ?').get(userId) as {
+      pin_hash: string;
+    };
+
+    const result = await actions.saveSettings({
+      request: {
+        formData: async () =>
+          makeFormData({
+            username: 'Isla',
+            diary_title: 'Moon Notes',
+            font_size: '4.4',
+            journal_font: 'cedarville-cursive',
+            pin: '7777',
+            confirm: '7777',
+          }),
+      },
+      locals: { db, user: defaultUser(userId) },
+    } as any);
+
+    expect(result?.status).toBe(400);
+    const after = db.prepare('SELECT pin_hash FROM users WHERE id = ?').get(userId) as {
+      pin_hash: string;
+    };
+    expect(after.pin_hash).toBe(before.pin_hash);
+  });
+
+  it('returns 400 for a username longer than 40 chars', async () => {
+    const result = await actions.saveSettings({
+      request: {
+        formData: async () =>
+          makeFormData({
+            username: 'x'.repeat(41),
+            diary_title: 'Moon Notes',
+            font_size: '4.4',
+            journal_font: 'cedarville-cursive',
+            pin: '',
+            confirm: '',
+          }),
+      },
+      locals: { db, user: defaultUser(userId) },
+    } as any);
+
+    expect(result?.status).toBe(400);
+  });
+
   it('returns 400 for an invalid journal font', async () => {
     const result = await actions.saveSettings({
       request: {

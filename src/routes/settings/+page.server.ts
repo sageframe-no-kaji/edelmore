@@ -39,17 +39,21 @@ export const actions: Actions = {
     const voiceUri = voiceUriRaw === '' ? null : voiceUriRaw;
 
     if (!username) return fail(400, { error: 'Name cannot be empty' });
+    if (username.length > 40) return fail(400, { error: 'Name too long (max 40 chars)' });
     if (!diaryTitle) return fail(400, { error: 'Title cannot be empty' });
     if (diaryTitle.length > 40) return fail(400, { error: 'Title too long (max 40 chars)' });
     if (!FONT_SIZE_STEPS.includes(fontSize)) return fail(400, { error: 'Invalid font size' });
     if (!JOURNAL_FONTS.includes(journalFont as (typeof JOURNAL_FONTS)[number])) {
       return fail(400, { error: 'Invalid journal font' });
     }
+    // Validate (and hash) the PIN here, but WRITE it after the other updates:
+    // updateUsername can still fail on uniqueness, and the save must not
+    // change the PIN while reporting an error.
+    let pinHash: string | null = null;
     if (pin.length > 0 || confirm.length > 0) {
       if (!/^\d{4}$/.test(pin)) return fail(400, { error: 'PIN must be exactly 4 digits' });
       if (pin !== confirm) return fail(400, { error: 'PINs do not match' });
-      const hash = await hashPin(pin);
-      updatePinHash(locals.db, locals.user.id, hash);
+      pinHash = await hashPin(pin);
     }
 
     try {
@@ -58,6 +62,7 @@ export const actions: Actions = {
       updateFontSize(locals.db, locals.user.id, fontSize);
       updateJournalFont(locals.db, locals.user.id, journalFont);
       updateVoiceUri(locals.db, locals.user.id, voiceUri);
+      if (pinHash) updatePinHash(locals.db, locals.user.id, pinHash);
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
       if (message.includes('UNIQUE constraint failed: users.username')) {
@@ -73,6 +78,7 @@ export const actions: Actions = {
     const data = await request.formData();
     const username = data.get('username')?.toString().trim() ?? '';
     if (!username) return fail(400, { error: 'Name cannot be empty' });
+    if (username.length > 40) return fail(400, { error: 'Name too long (max 40 chars)' });
     updateUsername(locals.db, locals.user.id, username);
     return { success: true };
   },
