@@ -112,11 +112,13 @@ async function flip(direction: 'forward' | 'backward', mutate: () => void | Prom
     return;
   }
 
+  // Claim the flip BEFORE the forward-flip delay — during that 500ms the
+  // guard at the top otherwise let a second flip start concurrently
+  // (double-click = double navigation + overlapping clone animations).
+  isFlipping = true;
   if (direction === 'forward') {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-
-  isFlipping = true;
 
   // Snapshot the OLD turning page (front face) and OLD opposite-side page
   // (static overlay) — both BEFORE mutation, so they hold the OLD content.
