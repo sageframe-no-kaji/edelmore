@@ -303,16 +303,24 @@ $effect(() => {
   const timer = setTimeout(async () => {
     /* v8 ignore next 31 */
     if (!c.trim()) {
-      // Empty entry — delete it and navigate away.
-      await fetch(`/api/entries/${date}`, { method: 'DELETE' });
-      entryDatePreviews = entryDatePreviews.filter((e) => e.entry_date !== date);
+      // Entry emptied — delete the row but STAY on the page. Navigating
+      // away mid-edit yanked the book out from under a writer who cleared
+      // the page to rewrite it, and the retyped text could land on a
+      // different day. flushEmptyEntry still prunes blank pages on leave.
       stopBird();
-      // Go to the nearest remaining entry, or back to the TOC.
-      const target = prevDate ?? nextDate;
-      if (target) {
-        await navigateTo(target);
-      } else {
-        flip('backward', () => { spreadState = { kind: 'toc' }; });
+      try {
+        await fetch(`/api/entries/${date}`, { method: 'DELETE' });
+        serverContent = c;
+        // Keep today's row (the server always lists today); drop others.
+        if (date === todayIso()) {
+          entryDatePreviews = entryDatePreviews.map((e) =>
+            e.entry_date === date ? { entry_date: date, preview: '' } : e
+          );
+        } else {
+          entryDatePreviews = entryDatePreviews.filter((e) => e.entry_date !== date);
+        }
+      } catch {
+        // Delete is retried by flushEmptyEntry when the user leaves.
       }
       return;
     }
@@ -324,6 +332,7 @@ $effect(() => {
       });
       if (!res.ok) throw new Error(`save failed: HTTP ${res.status}`);
       serverContent = c;
+      upsertPreview(date, c);
       saved = true;
       saveFailed = false;
       setTimeout(() => {
@@ -339,6 +348,23 @@ $effect(() => {
   }, 1500);
   return () => clearTimeout(timer);
 });
+
+// Keep the TOC preview list in step with what's being written — including
+// re-adding a date that the empty-entry delete pruned and was then retyped.
+// Mirrors makeEntryPreview in db.ts (not importable client-side: db.ts
+// pulls in better-sqlite3).
+function upsertPreview(date: string, c: string) {
+  const firstLine = c.split('\n')[0].trimStart();
+  const preview = firstLine.length <= 20 ? firstLine : `${firstLine.slice(0, 20)}…`;
+  const idx = entryDatePreviews.findIndex((e) => e.entry_date === date);
+  if (idx >= 0) {
+    entryDatePreviews[idx] = { entry_date: date, preview };
+  } else {
+    entryDatePreviews = [...entryDatePreviews, { entry_date: date, preview }].sort((a, b) =>
+      a.entry_date.localeCompare(b.entry_date)
+    );
+  }
+}
 
 // If the entry we're leaving has been emptied, delete it before we go.
 // The debounced autosave also deletes empty entries, but a quick navigation
