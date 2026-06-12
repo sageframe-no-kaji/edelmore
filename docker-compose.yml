@@ -11,6 +11,10 @@ services:
     environment:
       # Override the DB path to the mounted volume, regardless of .env.
       - DATABASE_URL=/data/edelmore.db
+      # The diary's "today" is the household's wall-clock day. Without this
+      # the container runs in UTC and the server disagrees with the browser
+      # about which date is today every evening. Override via TZ in .env.
+      - TZ=${TZ:-America/New_York}
     volumes:
       - ./data:/data
     ports:

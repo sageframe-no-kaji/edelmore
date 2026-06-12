@@ -43,6 +43,18 @@ describe('todayIso', () => {
   it('returns a valid date', () => {
     expect(isValidDate(todayIso())).toBe(true);
   });
+
+  it('returns the LOCAL calendar date, never the UTC date', () => {
+    // Regression: toISOString() gave the UTC date, which rolls to "tomorrow"
+    // at 8pm US Eastern — evening entries landed on the wrong day. This
+    // assertion pins todayIso to local getters; in any non-UTC zone during
+    // the offset window it fails against a toISOString-based implementation.
+    const now = new Date();
+    const local = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+      now.getDate()
+    ).padStart(2, '0')}`;
+    expect(todayIso()).toBe(local);
+  });
 });
 
 describe('getPrevDate', () => {

@@ -4,8 +4,15 @@ export function isValidDate(s: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(s);
 }
 
+// The diary's "today" is the writer's wall-clock day, not UTC. toISOString()
+// returns the UTC date, which rolls over at 8pm US Eastern — evening entries
+// were being saved under tomorrow's date. Server-side this relies on the
+// process TZ matching the household (TZ is set in docker-compose.yml).
 export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${month}-${day}`;
 }
 
 export function getPrevDate(iso: string): string {
