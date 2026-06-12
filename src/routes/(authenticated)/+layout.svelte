@@ -86,6 +86,9 @@ function makeFace(source: HTMLElement, isBack: boolean): HTMLElement {
 
 async function flip(direction: 'forward' | 'backward', mutate: () => void | Promise<void>) {
   if (isFlipping) return;
+  // Any spread change cancels the autosave debounce timer (the effect
+  // tracks spreadState) — flush pending content before leaving an entry.
+  if (spreadState.kind === 'entry') void flushPendingSave();
   if (!bookShellEl) {
     await mutate();
     return;
@@ -250,19 +253,28 @@ let journalFont = $state(untrack(() => ($page.data as any).user?.journal_font ??
 let voiceURI: string | null = $state(untrack(() => ($page.data as any).user?.voice_uri ?? null));
 
 // Sync when SvelteKit navigates to a new [date] route.
+// Content is only reset when the DATE actually changes: the effect also
+// re-fires on any load re-run for the same date (e.g. invalidateAll after
+// saving settings), and resetting content then would clobber anything
+// typed inside the autosave debounce window.
+let lastSyncedDate: string | null = $page.params.date ?? null;
 $effect(() => {
   const date = $page.params.date;
   // biome-ignore lint/suspicious/noExplicitAny: layout has no type access to child page data
   const d = $page.data as any;
   untrack(() => {
     if (date) {
+      const dateChanged = date !== lastSyncedDate;
+      lastSyncedDate = date;
       spreadState = { kind: 'entry', date };
-      content = d.content ?? '';
-      serverContent = d.content ?? '';
       prevDate = d.prevDate ?? null;
       nextDate = d.nextDate ?? null;
       entryDatePreviews = d.entryDatePreviews ?? [];
-      stopBird();
+      if (dateChanged) {
+        content = d.content ?? '';
+        serverContent = d.content ?? '';
+        stopBird();
+      }
     }
   });
 });
@@ -344,7 +356,31 @@ async function flushEmptyEntry() {
   await fetch(`/api/entries/${date}`, { method: 'DELETE' });
 }
 
+// Flush debounced-but-unsent content before leaving the page. The autosave
+// effect's pending timer is destroyed when navigation reassigns `content`,
+// so without this, anything typed in the last 1.5s was silently lost.
+// keepalive lets the request survive document teardown (tab close).
+/* v8 ignore next 17 */
+async function flushPendingSave() {
+  if (spreadState.kind !== 'entry') return;
+  const c = content;
+  if (c === serverContent || !c.trim()) return; // empty pages → flushEmptyEntry
+  const date = spreadState.date;
+  try {
+    const res = await fetch('/api/entries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, content: c }),
+      keepalive: true,
+    });
+    if (res.ok) serverContent = c;
+  } catch {
+    // Still on the page → the autosave retry loop picks it up.
+  }
+}
+
 async function navigateTo(date: string) {
+  await flushPendingSave();
   await flushEmptyEntry();
   /* v8 ignore next 7 */
   const res = await fetch(`/api/entries/${date}`);
@@ -1307,9 +1343,25 @@ onMount(() => {
   }
   window.addEventListener('keydown', onKeyDown);
 
+  // Last-chance flush when the tab closes or goes to the background
+  // (lid shut, tab switch). sendBeacon survives document teardown.
+  function beaconFlush() {
+    if (spreadState.kind !== 'entry') return;
+    if (content === serverContent || !content.trim()) return;
+    const payload = JSON.stringify({ date: spreadState.date, content });
+    navigator.sendBeacon?.('/api/entries', new Blob([payload], { type: 'application/json' }));
+  }
+  function onVisibilityChange() {
+    if (document.visibilityState === 'hidden') beaconFlush();
+  }
+  window.addEventListener('pagehide', beaconFlush);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+
   return () => {
     measureEl?.remove();
     window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('pagehide', beaconFlush);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
   };
 });
 
