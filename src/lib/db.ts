@@ -31,6 +31,18 @@ export type Entry = {
 
 export function createDb(path: string): Database {
   const db = new BetterSqlite3(path);
+  // Durability + correctness, in that order:
+  // - WAL survives abrupt container kills far better than the default
+  //   rollback journal (':memory:' ignores it and reports 'memory').
+  // - synchronous=NORMAL is the recommended level under WAL.
+  // - foreign_keys is OFF by default in SQLite — without this the
+  //   REFERENCES users(id) constraints are never enforced.
+  // - busy_timeout waits instead of throwing SQLITE_BUSY immediately
+  //   if a second connection ever appears.
+  db.pragma('journal_mode = WAL');
+  db.pragma('synchronous = NORMAL');
+  db.pragma('foreign_keys = ON');
+  db.pragma('busy_timeout = 5000');
   applySchema(db);
   return db;
 }

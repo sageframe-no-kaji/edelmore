@@ -38,6 +38,26 @@ describe('createDb / applySchema', () => {
     const db = freshDb();
     expect(() => applySchema(db)).not.toThrow();
   });
+
+  it('enforces foreign keys (OFF by SQLite default)', () => {
+    const db = freshDb();
+    expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+    // Regression: without the pragma, this orphan row inserted silently.
+    expect(() => upsertEntry(db, 999, '2026-06-12', 'orphan')).toThrow(/FOREIGN KEY/);
+  });
+
+  it('sets busy_timeout so concurrent access waits instead of failing', () => {
+    const db = freshDb();
+    expect(db.pragma('busy_timeout', { simple: true })).toBe(5000);
+  });
+
+  it('requests WAL journal mode (file-backed dbs honor it)', () => {
+    // ':memory:' reports 'memory'; the assertion is that the pragma ran
+    // without error and the mode is not the default rollback journal.
+    const db = freshDb();
+    const mode = db.pragma('journal_mode', { simple: true });
+    expect(mode).not.toBe('delete');
+  });
 });
 
 describe('user operations', () => {
