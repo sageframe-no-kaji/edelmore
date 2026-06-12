@@ -220,6 +220,11 @@ let content = $state(untrack(() => ($page.data as any).content ?? ''));
 // biome-ignore lint/suspicious/noExplicitAny: layout has no type access to child page data
 let serverContent = untrack(() => ($page.data as any).content ?? '');
 let saved = $state(false);
+// True after a failed save; cleared on the next success. Drives the
+// "Not saved yet" indicator so failure is never silently shown as "Saved".
+let saveFailed = $state(false);
+// Bumped after a failed save (3s delay) to re-run the autosave effect.
+let saveRetryNonce = $state(0);
 // biome-ignore lint/suspicious/noExplicitAny: layout has no type access to child page data
 let prevDate: string | null = $state(untrack(() => ($page.data as any).prevDate ?? null));
 // biome-ignore lint/suspicious/noExplicitAny: layout has no type access to child page data
@@ -275,13 +280,16 @@ function renderMarkdown(text: string): string {
 }
 
 // Autosave — fires only when content differs from what the server has.
+// On failure the save is NOT marked synced: the failure is shown, and
+// saveRetryNonce re-arms the effect so the save retries until it lands.
 $effect(() => {
   const c = content;
+  void saveRetryNonce; // dependency: bumped after a failed save to retry
   if (c === serverContent) return;
   const date = spreadState.kind === 'entry' ? spreadState.date : null;
   if (!date) return;
   const timer = setTimeout(async () => {
-    /* v8 ignore next 22 */
+    /* v8 ignore next 31 */
     if (!c.trim()) {
       // Empty entry — delete it and navigate away.
       await fetch(`/api/entries/${date}`, { method: 'DELETE' });
@@ -296,16 +304,26 @@ $effect(() => {
       }
       return;
     }
-    await fetch('/api/entries', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date, content: c }),
-    });
-    serverContent = c;
-    saved = true;
-    setTimeout(() => {
-      saved = false;
-    }, 1000);
+    try {
+      const res = await fetch('/api/entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, content: c }),
+      });
+      if (!res.ok) throw new Error(`save failed: HTTP ${res.status}`);
+      serverContent = c;
+      saved = true;
+      saveFailed = false;
+      setTimeout(() => {
+        saved = false;
+      }, 1000);
+    } catch (e) {
+      console.warn('Autosave failed; retrying', e);
+      saveFailed = true;
+      setTimeout(() => {
+        saveRetryNonce += 1;
+      }, 3000);
+    }
   }, 1500);
   return () => clearTimeout(timer);
 });
@@ -1621,7 +1639,9 @@ $effect(() => {
 									placeholder="Begin writing…"
 								></textarea>
 							{/if}
-							{#if saved}
+							{#if saveFailed}
+								<span class="absolute bottom-2 left-8 z-10 text-xs text-red-400 italic pointer-events-none">Not saved yet…</span>
+							{:else if saved}
 								<span class="absolute bottom-2 left-8 z-10 text-xs text-stone-400 italic pointer-events-none">Saved</span>
 							{/if}
 						</div>
@@ -1951,7 +1971,9 @@ $effect(() => {
 					style={`font-family: ${journalFontFamily}`}
 					placeholder="Begin writing…"
 				></textarea>
-				{#if saved}
+				{#if saveFailed}
+					<span class="text-xs text-red-400 italic mt-2">Not saved yet…</span>
+				{:else if saved}
 					<span class="text-xs text-stone-400 italic mt-2">Saved</span>
 				{/if}
 			</div>
