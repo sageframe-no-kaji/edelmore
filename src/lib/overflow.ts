@@ -22,8 +22,17 @@ export function findSplitIndex(content: string, measure: (n: number) => boolean)
  * word boundary (space) within a small window. Avoids mid-word splits without
  * jumping back to a distant paragraph boundary and creating a large blank gap.
  * Returns splitAt unchanged if no suitable break precedes it.
+ *
+ * The window is ~one line wide. A break further back than that is not worth
+ * preserving: snapping to it would strand more than a line of blank space at the
+ * bottom of the page. The pathological case is a long unbreakable token (a URL
+ * with no spaces) — without the cap, the split snaps back to the newline before
+ * the URL and bumps the entire URL to the next page, leaving the rest of the
+ * current page empty. With the cap, no break is found in-window and the token is
+ * hard-split, so the URL wraps across the page boundary (matching `break-words`)
+ * and the page fills.
  */
-const SNAP_WINDOW = 100;
+const SNAP_WINDOW = 40;
 export function snapToWordBreak(content: string, splitAt: number): number {
   const windowStart = Math.max(0, splitAt - SNAP_WINDOW);
   const before = content.slice(windowStart, splitAt);

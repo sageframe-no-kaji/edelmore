@@ -43,6 +43,13 @@ async function start(insert: (text: string) => void, onstart?: () => void) {
   activeInsert = insert;
   cancelled = false;
   chunks = [];
+  // Capture the insertion anchor NOW — synchronously, before the async mic
+  // acquisition. The host reads the focused textarea's selectionStart; awaiting
+  // getUserMedia first opens a gap in which a blur, a reflow, or a permission
+  // prompt can move or reset that selection, landing the transcription on the
+  // wrong page. Recording may still fail below; a stale anchor is then harmless
+  // (no insert happens, and the next recording recaptures it).
+  onstart?.();
   /* v8 ignore next 22 */
   let stream: MediaStream | null = null;
   try {
@@ -56,9 +63,6 @@ async function start(insert: (text: string) => void, onstart?: () => void) {
     mediaRecorder.start(500);
     recordingStart = Date.now();
     micState.set({ phase: 'recording', errorMessage: '', elapsed: 0 });
-    // Recording has actually begun — let the host capture the insertion anchor
-    // (the absolute content offset the transcription will land at).
-    onstart?.();
     elapsedTimer = setInterval(() => {
       const elapsed = Math.floor((Date.now() - recordingStart) / 1000);
       micState.update((state) => ({ ...state, elapsed }));

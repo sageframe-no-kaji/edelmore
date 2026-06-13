@@ -212,6 +212,8 @@ async function flip(direction: 'forward' | 'backward', mutate: () => void | Prom
   livePages.same.classList.remove('flip-hidden');
   livePages.opposite?.classList.remove('flip-hidden');
   isFlipping = false;
+  // Re-apply any caret restore that fired while the live pages were hidden.
+  restoreRetryNonce += 1;
 }
 
 let spreadState: SpreadState = $state(
@@ -426,12 +428,12 @@ async function navigateTo(date: string) {
 // spread changes during the recording. null = no anchor captured; append at the
 // end of the entry.
 let voiceAnchor: number | null = null;
-// Absolute cursor position of a just-landed voice insert. Consumed by the
-// pagination effect once new splitPoints exist for the grown content — it jumps
-// to the spread containing the insertion and restores the cursor there.
-let pendingVoiceRestore: number | null = null;
-
+// The entry (day) the anchor indexes into. The absolute offset only means
+// something inside this day's `content`; if the reader navigates to another
+// day mid-recording, we go back here before inserting.
+let voiceAnchorDate: string | null = null;
 function handleRecordingStart() {
+  voiceAnchorDate = entryDate;
   // The user just clicked the mic button, so activeEditor is already null —
   // lastActiveEditor remembers which side they were writing on (sticky across
   // blur). Recording from outside an entry (toc, settings) has no textarea;
@@ -450,13 +452,24 @@ function handleRecordingStart() {
   voiceAnchor = pageStart + target.selectionStart;
 }
 
-function handleTranscriptionInsert(text: string) {
+async function handleTranscriptionInsert(text: string) {
   if (!text) return;
   const anchor = voiceAnchor ?? content.length;
+  const anchorDate = voiceAnchorDate;
   voiceAnchor = null;
+  voiceAnchorDate = null;
+  // Dictation pins to the entry it began in. If the reader navigated to a
+  // different day mid-recording, go back to that day before inserting — the
+  // anchor is an offset into THAT day's content, not the current view's.
+  if (anchorDate && anchorDate !== entryDate) {
+    await navigateTo(anchorDate);
+  }
   const result = insertAtAnchor(content, anchor, text);
   content = result.content;
-  pendingVoiceRestore = result.cursorPos;
+  // Side-less restore: once pagination reflects the grown content, the
+  // projection effect jumps to the spread containing the insertion and
+  // lands the caret at its end.
+  pendingCursorRestore = { absPos: result.cursorPos };
 }
 
 function onFlipNext() {
@@ -1323,7 +1336,15 @@ let textareaEl: HTMLTextAreaElement | null = $state(null);
 // biome-ignore lint/style/useConst: bind:this requires let
 let rightTextareaEl: HTMLTextAreaElement | null = $state(null);
 let measureEl: HTMLTextAreaElement | null = null;
-let pendingCursorRestore: { absPos: number; side: 'left' | 'right' } | null = null;
+// Caret restore — applied by the projection effect. `side` pins the landing
+// textarea (arrow-key navigation at spread boundaries, where an offset sits on
+// two pages at once); when omitted, the spread and side are derived from the
+// absolute position, so a caret that flowed past a page boundary follows its
+// text — including onto the next spread.
+let pendingCursorRestore: { absPos: number; side?: 'left' | 'right' } | null = null;
+// Bumped when a flip finishes: a restore that fired mid-flip found its textarea
+// visibility:hidden (focus() silently fails there) and is still pending.
+let restoreRetryNonce = $state(0);
 // What each page's textarea currently holds, kept in lockstep with the textarea
 // (set on focus, on projection, and after each edit). applyPageEdit derives the
 // page-window end from this prior value rather than from splitPoints, which lags
@@ -1412,9 +1433,17 @@ onMount(() => {
   };
 });
 
+// Reset pagination ONLY when the entry date actually changes. spreadState is
+// reassigned to a fresh object on every load re-run (invalidateAll, autosave
+// side effects), so `entryDate` can re-fire with an unchanged value — and an
+// unguarded reset here yanks the reader back to spread 0 mid-session, e.g.
+// during a voice recording, landing the anchored insert on the wrong page.
+let lastSpreadResetDate: string | null = null;
 $effect(() => {
-  void entryDate;
+  const date = entryDate;
   untrack(() => {
+    if (date === lastSpreadResetDate) return;
+    lastSpreadResetDate = date;
     splitPoints = [];
     entryPageSpread = 0;
   });
@@ -1517,16 +1546,6 @@ $effect(() => {
     splitPoints = points;
     const newSpreadCount = Math.floor(points.length / 2) + 1;
     if (entryPageSpread >= newSpreadCount) entryPageSpread = newSpreadCount - 1;
-    // A voice insert just landed: now that the splits reflect the grown
-    // content, jump to the spread containing the insertion and queue the
-    // cursor restore at its end ("the recording goes where it started").
-    if (pendingVoiceRestore !== null) {
-      const pos = pendingVoiceRestore;
-      pendingVoiceRestore = null;
-      const spread = spreadForOffset(points, pos);
-      entryPageSpread = spread;
-      pendingCursorRestore = { absPos: pos, side: sideForOffset(points, spread, pos) };
-    }
   }, 50);
   return () => clearTimeout(timer);
 });
@@ -1536,34 +1555,66 @@ $effect(() => {
 $effect(() => {
   const sp = splitPoints;
   const spread = entryPageSpread;
-  const c = untrack(() => content);
+  void restoreRetryNonce; // flip completion re-applies a restore that fired mid-flip
   tick().then(() => {
-    // Read and clear the restore inside tick so it's consumed once, after all
-    // reactive state has settled (including entryPageSpread from a flip callback).
+    // Read content NOW, not at effect time. An input event can land between
+    // the effect run and this microtask; projecting the older string would
+    // overwrite the textarea (and lastLeft/RightValue) with stale text, and
+    // the next applyPageEdit would splice that stale page back into content —
+    // the duplication cascade, reborn one layer up.
+    const c = untrack(() => content);
+    // Never write to the textarea the user is actively editing. Its value is
+    // the authoritative input; `content` already mirrors it via applyPageEdit,
+    // and the read-only markdown div shows the correct page slice the instant
+    // they blur. Projecting a (possibly stale-split) slice over a focused
+    // textarea trims text out from under the caret AND desyncs lastLeftValue —
+    // that desync is the typing-overflow corruption. Project only idle pages.
+    const active = document.activeElement;
+    const ls = spread === 0 ? 0 : (sp[spread * 2 - 1] ?? 0);
+    const le = sp[spread * 2];
+    if (textareaEl && textareaEl !== active) {
+      const v = c.slice(ls, le);
+      if (textareaEl.value !== v) textareaEl.value = v;
+      lastLeftValue = v;
+    }
+    const rs = sp[spread * 2];
+    const re = sp[spread * 2 + 1];
+    if (rightTextareaEl && rightTextareaEl !== active) {
+      const v = c.slice(rs, re);
+      if (rightTextareaEl.value !== v) rightTextareaEl.value = v;
+      lastRightValue = v;
+    }
+
     const restore = pendingCursorRestore;
-    pendingCursorRestore = null;
-    if (textareaEl) {
-      const ls = spread === 0 ? 0 : (sp[spread * 2 - 1] ?? 0);
-      const le = sp[spread * 2];
-      textareaEl.value = c.slice(ls, le);
-      lastLeftValue = textareaEl.value;
-      if (restore?.side === 'left') {
-        const localPos = Math.max(0, Math.min(restore.absPos - ls, textareaEl.value.length));
-        textareaEl.focus();
-        textareaEl.setSelectionRange(localPos, localPos);
+    if (!restore) return;
+    if (restore.side === undefined) {
+      // Derived restore: follow the caret's absolute position to whatever
+      // spread its text flowed onto. Jumping re-runs this effect (the spread
+      // is a dependency), which projects the new pages and lands the caret.
+      const target = spreadForOffset(sp, restore.absPos);
+      if (target !== untrack(() => entryPageSpread)) {
+        entryPageSpread = target;
+        return;
       }
     }
-    if (rightTextareaEl) {
-      const rs = sp[spread * 2];
-      const re = sp[spread * 2 + 1];
-      rightTextareaEl.value = c.slice(rs, re);
-      lastRightValue = rightTextareaEl.value;
-      if (restore?.side === 'right') {
-        const localPos = Math.max(0, Math.min(restore.absPos - rs, rightTextareaEl.value.length));
-        rightTextareaEl.focus();
-        rightTextareaEl.setSelectionRange(localPos, localPos);
-      }
+    const side = restore.side ?? sideForOffset(sp, spread, restore.absPos);
+    const el = side === 'right' ? rightTextareaEl : textareaEl;
+    if (!el) return;
+    // Target is already focused (the user is typing here) — the native caret
+    // is exactly where they left it; don't fight it with setSelectionRange.
+    if (el === active) {
+      pendingCursorRestore = null;
+      return;
     }
+    const start = side === 'right' ? (rs ?? 0) : ls;
+    const localPos = Math.max(0, Math.min(restore.absPos - start, el.value.length));
+    el.focus();
+    if (document.activeElement === el) {
+      el.setSelectionRange(localPos, localPos);
+      pendingCursorRestore = null; // consumed only when focus actually landed
+    }
+    // else: mid-flip, textarea is visibility:hidden and focus() was a no-op —
+    // the restore stays pending and restoreRetryNonce re-applies it.
   });
 });
 </script>
@@ -1739,9 +1790,17 @@ $effect(() => {
 									}}
 									oninput={(e) => {
 										const ta = e.currentTarget;
-										pendingCursorRestore = { absPos: leftStart + ta.selectionStart, side: 'left' };
 										content = applyPageEdit(content, leftStart, lastLeftValue, ta.value);
 										lastLeftValue = ta.value;
+										// Side-pinned while the text fits the page — no bounce. The
+										// moment it overflows, switch to the side-less follow so the
+										// caret rides its own text onto the next page (the facing
+										// right page, or the next spread) instead of scrolling.
+										// Overflow is read from the textarea itself, never from the
+										// lagging split points.
+										const absPos = leftStart + ta.selectionStart;
+										pendingCursorRestore =
+											ta.scrollHeight > ta.clientHeight ? { absPos } : { absPos, side: 'left' };
 									}}
 									class={`absolute inset-0 h-full w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent leading-relaxed outline-none relative ${activeEditor === 'left' ? 'text-ink-900 caret-ink-900' : 'text-transparent caret-transparent'}`}
 									style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
@@ -1919,9 +1978,13 @@ $effect(() => {
 									}}
 									oninput={(e) => {
 										const ta = e.currentTarget;
-										pendingCursorRestore = { absPos: rightStart + ta.selectionStart, side: 'right' };
 										content = applyPageEdit(content, rightStart, lastRightValue, ta.value);
 										lastRightValue = ta.value;
+										// See the left textarea: side-pinned until the page overflows,
+										// then the side-less follow carries the caret to the next spread.
+										const absPos = rightStart + ta.selectionStart;
+										pendingCursorRestore =
+											ta.scrollHeight > ta.clientHeight ? { absPos } : { absPos, side: 'right' };
 									}}
 									class={`absolute inset-0 h-full w-full resize-none overflow-hidden px-8 pt-12 pb-8 bg-transparent leading-relaxed outline-none relative ${activeEditor === 'right' ? 'text-ink-900 caret-ink-900' : 'text-transparent caret-transparent'}`}
 									style={`font-size: var(--page-font-size); font-family: ${journalFontFamily}`}
