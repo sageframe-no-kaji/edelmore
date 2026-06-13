@@ -3,6 +3,9 @@ name: Build and publish Docker image
 on:
   push:
     branches: [main]
+    # Version tags (v1.1, v2.0, …) cut a release: same verify gate, plus a
+    # versioned image tag alongside :latest. See CLAUDE.md → Deployment.
+    tags: ['v*']
 
 jobs:
   # The image publishes to a public registry — never ship a red main.
@@ -45,12 +48,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Derives image tags from the trigger: main pushes get :latest + :sha-<short>,
+      # a v* tag push adds :<tag> (e.g. :v1.1). latest only moves on the default branch.
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/edelmore-diary
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+            type=ref,event=tag
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/edelmore-diary:latest
-            ghcr.io/${{ github.repository_owner }}/edelmore-diary:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
