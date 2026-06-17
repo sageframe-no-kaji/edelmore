@@ -174,9 +174,11 @@ export function deleteExpiredSessions(db: Database): void {
 }
 
 export function getEntry(db: Database, userId: number, entryDate: string): Entry | undefined {
-  return db
+  const row = db
     .prepare('SELECT * FROM entries WHERE user_id = ? AND entry_date = ?')
-    .get(userId, entryDate) as Entry | undefined;
+    .get(userId, entryDate) as (Entry & { content: unknown }) | undefined;
+  if (!row) return undefined;
+  return { ...row, content: coerceContent(row.content) };
 }
 
 export function upsertEntry(
@@ -210,9 +212,18 @@ export type EntryDatePreview = {
   preview: string;
 };
 
-export function makeEntryPreview(content: string | null): string {
-  if (!content) return '';
-  const firstLine = content.split('\n')[0].trimStart();
+// better-sqlite3 returns Buffer for BLOB-affinity values even on TEXT columns
+// when content was historically inserted as bytes. Coerce at every read site.
+function coerceContent(value: unknown): string {
+  if (value == null) return '';
+  if (Buffer.isBuffer(value)) return value.toString('utf8');
+  return String(value);
+}
+
+export function makeEntryPreview(content: unknown): string {
+  const text = coerceContent(content);
+  if (!text) return '';
+  const firstLine = text.split('\n')[0].trimStart();
   if (firstLine.length <= 20) return firstLine;
   return `${firstLine.slice(0, 20)}…`;
 }
@@ -255,7 +266,7 @@ export function listEntryDatesWithPreview(
     .prepare(
       `SELECT entry_date, content FROM entries WHERE user_id = ? ORDER BY entry_date ${order}`
     )
-    .all(userId) as { entry_date: string; content: string | null }[];
+    .all(userId) as { entry_date: string; content: unknown }[];
   return rows.map((r) => ({
     entry_date: r.entry_date,
     preview: makeEntryPreview(r.content),
