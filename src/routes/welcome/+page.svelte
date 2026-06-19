@@ -50,28 +50,27 @@
   <!-- ── What ── -->
   <section id="what" class="what-section">
     <div class="wrap">
-      <p class="label">What Edelmore is</p>
       <h2>A real diary for hands that don't cooperate.</h2>
       <div class="cards">
         <div class="card">
-          <span class="card-glyph">🎙</span>
+          <span class="card-ornament">❧</span>
           <h3>Speak to write</h3>
           <p>Press the mic button, talk, press it again. Your words appear at the cursor. No keyboard required.</p>
         </div>
         <div class="card">
-          <span class="card-glyph">🐦</span>
+          <span class="card-ornament">❧</span>
           <h3>Read it back</h3>
           <p>A small bird in the corner reads the entry aloud while each word highlights as it's spoken.</p>
         </div>
         <div class="card">
-          <span class="card-glyph">📖</span>
+          <span class="card-ornament">❧</span>
           <h3>Book-shaped</h3>
           <p>Real page turns. Warm covers. A table of contents. It looks like a book because that's what it is.</p>
         </div>
         <div class="card">
-          <span class="card-glyph">🔒</span>
+          <span class="card-ornament">❧</span>
           <h3>Yours alone</h3>
-          <p>No cloud. No sharing. A 4-digit PIN keeps siblings out. Runs on a home server — Tailscale takes it everywhere.</p>
+          <p>No cloud. No sharing. A 4-digit PIN keeps siblings out. Runs on a home server, travels everywhere via Tailscale.</p>
         </div>
       </div>
     </div>
@@ -80,59 +79,16 @@
   <!-- ── Story (dark) ── -->
   <section class="dark">
     <div class="wrap">
-      <p class="label">The story behind it</p>
       <h2>Built for a child who wanted her own Anne Frank.</h2>
       <p>Existing diary tools fail differently. Day One stores entries on someone else's server. Paper journals are beautiful but ungenerous to anyone whose hands don't cooperate with a pen. Prompted apps impose structure on what should be unstructured.</p>
       <p>Edelmore was built for a 13-year-old who wanted to keep a diary on her own terms, in the shape of a thing that already meant something to her.</p>
-      <div class="not-grid">
-        <div>
-          <p class="not-title">What it is not</p>
-          <ul class="not-list">
-            <li>A journal with prompts or AI interlocution</li>
-            <li>A sharing platform — no concept of sharing an entry</li>
-            <li>A cloud service — runs on your homelab, full stop</li>
-            <li>A subscription — MIT licensed, self-hosted, free</li>
-          </ul>
-        </div>
-        <div class="feature-row">
-          <span class="chip">PIN auth</span>
-          <span class="chip">page-turn animation</span>
-          <span class="chip">voice transcription</span>
-          <span class="chip">read-aloud narration</span>
-          <span class="chip">calendar + TOC</span>
-          <span class="chip">custom covers</span>
-          <span class="chip">Tailscale-ready</span>
-          <span class="chip">Docker</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── Coming soon: Reader ── -->
-  <section id="reader" class="reader-section">
-    <div class="wrap">
-      <p class="label">Coming soon</p>
-      <div class="reader-grid">
-        <div>
-          <h2>Edelmore Reader</h2>
-          <p class="tagline">A read-along ebook reader. For the kids who hear stories better than they read them.</p>
-          <p>Upload an EPUB or pick from a built-in library of public-domain classics. A small songbird reads it aloud while each word glows as it's spoken. Pages turn at the right moment. The book remembers where you left off.</p>
-          <p style="margin-top:.8rem;">Sibling project to Edelmore Diary. Same book metaphor, same warmth, same local-first privacy. Follows the diary's v1.0 ship.</p>
-          <span class="coming-badge">No release date · watching the diary</span>
-        </div>
-        <div class="reader-books">
-          <p class="books-label">Built-in library (planned)</p>
-          <ul class="book-list">
-            <li>Alice in Wonderland</li>
-            <li>The Wind in the Willows</li>
-            <li>The Secret Garden</li>
-            <li>The Wonderful Wizard of Oz</li>
-            <li>A Little Princess</li>
-            <li>Just So Stories</li>
-          </ul>
-          <p class="books-note">Standard Ebooks editions · public domain · illustrated</p>
-        </div>
-      </div>
+      <p class="not-title">What it is not</p>
+      <ul class="not-list">
+        <li>A journal with prompts or AI interlocution</li>
+        <li>A sharing platform — no concept of sharing an entry</li>
+        <li>A cloud service — runs on your homelab, full stop</li>
+        <li>A subscription — MIT licensed, self-hosted, free</li>
+      </ul>
     </div>
   </section>
 
@@ -152,6 +108,15 @@
         </div>
       </div>
       <a class="btn" href="/login">Open the diary <span class="arrow">→</span></a>
+    </div>
+  </section>
+
+  <!-- ── Reader teaser ── -->
+  <section id="reader" class="reader-teaser">
+    <div class="wrap">
+      <p class="reader-eyebrow">Coming soon</p>
+      <p class="reader-title">Edelmore Reader</p>
+      <p class="reader-desc">A read-along ebook reader. Upload an EPUB or choose from a built-in library of public-domain classics — a songbird reads while each word glows. For the kids who hear stories better than they read them.</p>
     </div>
   </section>
 
@@ -212,8 +177,8 @@
   /* ── Type ── */
   section { padding: clamp(3.5rem, 9vh, 6.5rem) 0; }
   .label { font-family: var(--body); font-size: .8rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 1.1rem; }
-  h1 { font-family: var(--display); font-weight: 400; font-size: clamp(2.6rem, 6vw, 4rem); line-height: 1.12; letter-spacing: -.01em; margin: 0 auto .2rem; }
-  h2 { font-family: var(--display); font-weight: 400; font-size: clamp(1.7rem, 3.2vw, 2.3rem); line-height: 1.22; }
+  h1 { font-family: var(--display); font-weight: 400; font-size: clamp(2.6rem, 6vw, 4rem); line-height: 1.12; letter-spacing: -.01em; margin: 0 0 .2rem; }
+  h2 { font-family: var(--display); font-weight: 400; font-size: clamp(1.7rem, 3.2vw, 2.3rem); line-height: 1.22; text-wrap: balance; }
   h3 { font-family: var(--display); font-weight: 400; font-size: 1.2rem; line-height: 1.3; }
   p { color: var(--ink-light); font-size: 1.05rem; max-width: 640px; }
   .lead { font-size: 1.18rem; max-width: 560px; }
@@ -224,9 +189,10 @@
   .medallion-wrap { margin-bottom: 1.75rem; }
   .medallion { width: clamp(160px, 24vw, 260px); height: auto; display: inline-block; }
   .hero .label { margin-bottom: .75rem; }
+  .hero h1 { margin: 0 auto .2rem; }
   .hero p { margin: 1.4rem auto 0; }
   .cta-row { margin-top: 2rem; display: flex; align-items: center; justify-content: center; gap: 2rem; flex-wrap: wrap; }
-  .cta-note { font-family: var(--mono); font-size: .72rem; letter-spacing: .04em; color: var(--ink-muted); }
+  .cta-note { font-family: var(--mono); font-size: .8rem; letter-spacing: .02em; color: var(--ink-muted); }
 
   /* ── Demo box ── */
   .demo-box {
@@ -243,61 +209,54 @@
   .demo-row:last-child { margin-bottom: 0; }
   .demo-key { font-family: var(--mono); font-size: .8rem; letter-spacing: .04em; color: var(--ink-muted); min-width: 5rem; }
   .demo-val { font-family: var(--mono); font-size: 1.5rem; font-weight: 500; color: var(--ink); letter-spacing: .1em; }
-  .demo-box-final { margin: 1.25rem auto 2rem; background: var(--ground-warm); border-color: var(--rule); border-width: 1px; }
+  .demo-box-final { margin: 1.25rem auto 2rem; background: var(--ground-warm); border: 1px solid var(--rule); }
 
   /* ── Button ── */
-  .btn { display: inline-flex; align-items: center; gap: .5rem; font-family: var(--mono); font-size: .85rem; font-weight: 500; letter-spacing: .02em; padding: .85rem 1.4rem; border-radius: 2px; background: var(--accent); color: var(--white); transition: transform .2s ease, background .2s ease; }
-  .btn:hover { color: var(--white); background: #a84a22; transform: translateY(-1px); }
-  .arrow { transition: transform .2s ease; }
+  .btn { display: inline-flex; align-items: center; gap: .5rem; font-family: var(--mono); font-size: .85rem; font-weight: 500; letter-spacing: .02em; padding: .85rem 1.4rem; border-radius: 2px; background: var(--accent); color: var(--white); transition: background .2s ease; }
+  .btn:hover { color: var(--white); background: #a84a22; }
+  .arrow { display: inline-block; transition: transform .2s ease; }
   .btn:hover .arrow { transform: translateX(4px); }
 
   /* ── What ── */
   .what-section { border-top: 1px solid var(--rule); }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; margin-top: 2.5rem; }
-  .card { background: var(--white); border: 1px solid var(--rule); border-radius: 2px; padding: 1.6rem; transition: border-color .2s ease, transform .2s ease, box-shadow .2s ease; }
-  .card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.06); }
-  .card-glyph { font-size: 1.4rem; display: block; margin-bottom: .6rem; }
-  .card h3 { margin: .25rem 0 .6rem; }
+  .what-section h2 { margin-bottom: 2rem; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; }
+  .card { background: var(--white); border: 1px solid var(--rule); border-radius: 2px; padding: 1.6rem; transition: border-color .2s ease; }
+  .card:hover { border-color: var(--accent); }
+  .card-ornament { font-family: var(--display); font-size: 1.1rem; color: var(--accent); display: block; margin-bottom: .5rem; line-height: 1; }
+  .card h3 { margin: 0 0 .6rem; }
   .card p { font-size: .92rem; color: var(--ink-muted); max-width: none; }
 
   /* ── Dark ── */
   .dark { background: var(--dark-bg); color: var(--dark-prose); }
-  .dark .label { color: var(--dark-muted); }
-  .dark h2 { color: var(--ground); margin-bottom: 1.4rem; }
+  .dark h2 { color: var(--ground); margin-bottom: 1.4rem; text-wrap: balance; }
   .dark p { color: var(--dark-prose); }
   .dark p + p { margin-top: 1rem; }
-  .not-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(2rem, 5vw, 4rem); margin-top: 2rem; align-items: start; }
-  @media (max-width: 680px) { .not-grid { grid-template-columns: 1fr; } }
-  .not-title { font-family: var(--body); font-size: .78rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--dark-muted); margin-bottom: .9rem; max-width: none; }
-  .not-list { list-style: none; padding: 0; margin: 0; border-left: 1px solid var(--dark-rule); padding-left: 1.2rem; }
+  .not-title { font-family: var(--body); font-size: .78rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--dark-muted); margin: 2rem 0 .9rem; max-width: none; }
+  .not-list { list-style: none; padding: 0 0 0 1.2rem; margin: 0; border-left: 1px solid var(--dark-rule); max-width: 480px; }
   .not-list li { font-size: .95rem; color: var(--dark-text); margin-bottom: .8rem; }
-  .feature-row { margin-top: 1.5rem; display: flex; flex-wrap: wrap; gap: .5rem; }
-  .chip { font-family: var(--mono); font-size: .7rem; letter-spacing: .03em; color: var(--dark-text); border: 1px solid var(--dark-rule); border-radius: 2px; padding: .35rem .7rem; }
-
-  /* ── Reader ── */
-  .reader-section { background: var(--ground-warm); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
-  .reader-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: clamp(2rem, 5vw, 4rem); margin-top: 1.5rem; align-items: start; }
-  @media (max-width: 700px) { .reader-grid { grid-template-columns: 1fr; } }
-  .reader-section h2 { margin-bottom: .5rem; }
-  .reader-section .tagline { display: block; font-size: 1.1rem; margin-bottom: 1.2rem; }
-  .reader-section p { max-width: none; }
-  .coming-badge { display: inline-block; margin-top: 1.4rem; font-family: var(--mono); font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); border: 1px solid var(--rule); border-radius: 2px; padding: .3rem .7rem; }
-  .reader-books { background: var(--white); border: 1px solid var(--rule); border-radius: 2px; padding: 1.4rem; }
-  .books-label { font-family: var(--mono); font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: .9rem; max-width: none; }
-  .book-list { list-style: none; padding: 0; margin: 0; }
-  .book-list li { font-family: var(--display); font-style: italic; font-size: 1rem; color: var(--ink); padding: .45rem 0; border-bottom: 1px solid var(--rule); }
-  .book-list li:last-child { border-bottom: none; }
-  .books-note { font-family: var(--mono); font-size: .68rem; color: var(--ink-muted); margin-top: .8rem; max-width: none; }
 
   /* ── Final CTA ── */
   .final { text-align: center; }
   .final h2 { margin-bottom: .5rem; }
   .final .tagline { display: block; font-size: 1.15rem; margin-bottom: 0; }
 
+  /* ── Reader teaser ── */
+  .reader-teaser { border-top: 1px solid var(--rule); padding: clamp(2rem, 5vh, 3.5rem) 0; text-align: center; }
+  .reader-eyebrow { font-family: var(--mono); font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: .5rem; }
+  .reader-title { font-family: var(--display); font-size: clamp(1.2rem, 2.5vw, 1.6rem); font-weight: 400; color: var(--ink); margin-bottom: .75rem; }
+  .reader-desc { font-size: 1rem; color: var(--ink-muted); max-width: 560px; margin-left: auto; margin-right: auto; }
+
   /* ── Footer ── */
   footer { border-top: 1px solid var(--rule); padding: 2.5rem 0; }
   .ftr-inner { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
   .fnote { font-family: var(--mono); font-size: .72rem; color: var(--ink-muted); }
   .fnote a { font-size: inherit; }
-  .demo-pill { font-family: var(--mono); font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent); border-radius: 2px; padding: .25rem .6rem; }
+  .demo-pill { font-family: var(--mono); font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); border: 1px solid var(--rule); border-radius: 2px; padding: .25rem .6rem; }
+
+  /* ── Reduced motion ── */
+  @media (prefers-reduced-motion: reduce) {
+    a, .btn, .arrow, .card { transition: none; }
+    .btn:hover .arrow { transform: none; }
+  }
 </style>
