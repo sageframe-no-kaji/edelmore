@@ -1,6 +1,6 @@
 <svelte:head>
   <title>Edelmore — a book of your own</title>
-  <meta name="description" content="A private diary for children who hear better than they type. Book-shaped, voice-first, kept on your own machine.">
+  <meta name="description" content="A private diary for children who write by speaking. Book-shaped, voice-first, kept on your own machine.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600&display=swap" rel="stylesheet">
@@ -26,7 +26,7 @@
       <div class="medallion-wrap">
         <img src="/edelmore.png" alt="Edelmore" class="medallion">
       </div>
-      <p class="label">For children who hear better than they type</p>
+      <p class="label">For children who write by speaking</p>
       <h1>A book of your own.</h1>
       <p class="lead">Edelmore is a private diary shaped like a book. Voice transcription handles the writing; the diary reads entries back aloud. Pages turn. No cloud. Nobody reads it but the person who wrote it.</p>
       <div class="demo-box">
