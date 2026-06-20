@@ -1,8 +1,11 @@
 # syntax=docker/dockerfile:1
 
+# Build context is the workspace root (the repo root), not apps/diary/. This
+# lets npm see the workspace's package-lock.json and resolve hoisted deps.
+
 # ── Build stage ──────────────────────────────────────────────────────────────
-# Compiles better-sqlite3's native addon and bundles the SvelteKit app, then
-# prunes to production dependencies. The build toolchain stays in this stage.
+# Compiles better-sqlite3's native addon and bundles the SvelteKit diary app,
+# then prunes to production dependencies. The build toolchain stays in this stage.
 FROM node:20-slim AS builder
 WORKDIR /app
 
@@ -10,13 +13,18 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ && rm -rf /var/lib/apt/lists/*
 
-COPY package*.json ./
+# Manifests first, for cache-friendly layering. Root manifest + lockfile drive
+# the install; apps/diary/package.json declares the diary app's deps.
+COPY package.json package-lock.json ./
+COPY apps/diary/package.json apps/diary/package.json
 RUN npm ci
 
-COPY . .
-# `npm run build` emits the adapter-node server into ./build; the prune drops
-# devDependencies while keeping better-sqlite3's compiled binary.
-RUN npm run build && npm prune --production
+# Then source — changes here don't bust the install cache above.
+COPY apps/diary apps/diary
+
+# SvelteKit's adapter-node emits to apps/diary/build. Prune devDeps from the
+# hoisted node_modules while keeping better-sqlite3's compiled binary.
+RUN npm run build -w apps/diary && npm prune --omit=dev
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
 # Slim image with no compiler toolchain — only the built server, its production
@@ -30,9 +38,10 @@ ENV NODE_ENV=production
 # match by the deploy tooling.
 RUN mkdir -p /data && chown node:node /data
 
-COPY --from=builder --chown=node:node /app/build ./build
+# Flatten apps/diary/build → /app/build so the CMD doesn't need workspace paths.
+COPY --from=builder --chown=node:node /app/apps/diary/build ./build
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
-COPY --from=builder --chown=node:node /app/package.json ./package.json
+COPY --from=builder --chown=node:node /app/apps/diary/package.json ./package.json
 
 USER node
 EXPOSE 3000

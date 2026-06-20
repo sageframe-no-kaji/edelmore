@@ -1,13 +1,31 @@
-node_modules
-.svelte-kit
-build
-.env
-data
-tests
-ho-process/
-prompts
-*.md
+# Generated/installed at depth
+**/node_modules
+**/.svelte-kit
+**/build
+**/coverage
+
+# Secrets and runtime data — never bake these into images
+**/.env
+**/.env.local
+**/data
+**/.impeccable
+
+# Repo metadata
 .git
 .gitignore
-lefthook.yml
+.dockerignore
+.github
+.DS_Store
+
+# Practitioner-private; never in images
+.claude
+**/.claude
+ho-process/
+prompts/
+
+# Tooling configs not needed at runtime
 biome.json
+lefthook.yml
+
+# Docs are read by humans, not the container
+**/*.md

@@ -1,0 +1,7 @@
+{
+  "name": "edelmore-reader",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Read-along EPUB reader, sibling to edelmore-diary. Seed-only — no code yet.",
+  "scripts": {}
+}

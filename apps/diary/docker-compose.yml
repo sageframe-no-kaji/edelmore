@@ -1,6 +1,12 @@
 services:
   edelmore:
-    build: .
+    # Build context is the workspace root so the Dockerfile can see the
+    # workspace's package-lock.json and apps/diary/. Run `docker compose up`
+    # from this directory (apps/diary/) and compose resolves relative paths
+    # from here.
+    build:
+      context: ../..
+      dockerfile: apps/diary/Dockerfile
     restart: unless-stopped
     # Docker's tini forwards SIGTERM to node (adapter-node shuts down
     # gracefully on it); without init, node ignored the signal and every

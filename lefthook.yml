@@ -12,8 +12,10 @@ pre-commit:
     # error in an unstaged file must still block the commit.
     lint:
       run: npm run lint
+    # The diary's `check` script (svelte-kit sync && svelte-check) needs to run
+    # inside apps/diary; root delegates via --workspaces --if-present.
     svelte-check:
-      run: npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json
+      run: npm run check
     # test:coverage enforces the 95%-lines floor; plain `npm run test`
     # silently skipped it.
     test:

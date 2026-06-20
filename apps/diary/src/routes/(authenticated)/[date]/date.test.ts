@@ -1,3 +1,4 @@
+import { todayIso } from '$lib/dates.js';
 import { type Database, createDb, createUser, upsertEntry } from '$lib/db.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { load } from './+page.server.js';
@@ -53,7 +54,7 @@ describe('[date] load', () => {
   });
 
   it('returns null nextDate when entry is today (nothing after)', async () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIso();
     upsertEntry(db, userId, today, 'Today.');
     const result = (await load(makeEvent(today) as any)) as any;
     expect(result.nextDate).toBeNull();
@@ -96,7 +97,7 @@ describe('[date] load', () => {
     expect(result.entryDatePreviews.length).toBeGreaterThanOrEqual(1);
     const dates = result.entryDatePreviews.map((e: { entry_date: string }) => e.entry_date);
     // Today must be present
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIso();
     expect(dates).toContain(today);
   });
 

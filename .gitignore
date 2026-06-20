@@ -44,5 +44,5 @@ ho-process/
 coverage/
 
 # Working/reference images (old variants not shipped in the app)
-static/girls-old.png
-static/label-old.png
+apps/diary/static/girls-old.png
+apps/diary/static/label-old.png

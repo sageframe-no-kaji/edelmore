@@ -1,112 +1,72 @@
-# Edelmore Diary
+# Edelmore
 
-*A cottage-core diary for a child — kept on your own machine.*
+*A family of cottage-core reading experiences — kept on your own machine.*
 
-> Edelmore is a private web diary shaped like a book. It opens to today's page. Pages turn. Voice transcription handles the writing for hands that struggle with the keyboard, and it can read entries back aloud. It runs on a parent's homelab, behind Tailscale and the home LAN, and nobody reads it but the person who wrote it.
+This is the monorepo for the Edelmore project. It houses two sibling SvelteKit apps
+that share a book metaphor, a narration stack (Kokoro TTS, word-by-word highlighting),
+and a cottage-core visual identity. Each app deploys independently.
 
-**Status:** Built. Auth, autosave, the cottage-core book skin, page-turn navigation, calendar/TOC, customizable covers, voice transcription, and read-aloud narration are all in place. Packaged for homelab deploy.
+## Apps
 
-## What's Broken
+- **[`apps/diary/`](apps/diary/)** — shipped at v1.2. A private diary for children rendered as a book. Voice transcription via Whisper, read-aloud narration via Kokoro TTS, homelab-only. See `apps/diary/README.md` for the full story.
+- **[`apps/reader/`](apps/reader/)** — seed only, no code yet. A read-along EPUB reader that feels like a real book. See `apps/reader/README.md` for the vision and `apps/reader/docs/seed.md` for the original Kamae-1 seed.
 
-Existing diary tools fail in different directions. Day One stores entries on someone else's server. Apple Notes and Google Docs are utilitarian — fine for a grocery list, wrong for an inner life. Paper journals are beautiful but ungenerous to anyone whose hands don't cooperate with a pen. Prompted apps (Stoic, Reflectly) impose structure on what should be unstructured. None of them look like a book the way a child imagines a book.
+Shared primitives will live under `packages/` (e.g., `@edelmore/book`, `@edelmore/narration`, `@edelmore/design`) when the reader actually consumes them. The packages directory is intentionally empty until then — package boundaries are drawn by real second-consumer pressure, not by hypothesis.
 
-Edelmore was built for a 13-year-old who wanted to keep an Anne Frank–style diary on her own terms, in the shape of a thing that already meant something to her.
+## Layout
 
-## What Edelmore Does
-
-Edelmore is a single-user-per-account web app rendered as a book. Each user has their own cover, their own pages, their own quiet space. Opening the book lands on today's page. You write in paragraphs. You can dictate instead — press the mic, talk, press it again, and your words appear at the cursor. You can also have a page read back to you aloud, with the words highlighted as they're spoken. Pages turn with an animation. A calendar overlay walks you backward through prior days. A table of contents on the first page lists every entry by date.
-
-The diary is private. Tailscale and the home LAN handle the network gate; a 4-digit PIN keeps siblings out of each other's books. There is no cloud. There is no sharing.
-
-Voice is the accessibility commitment behind the build, and both halves of it — transcription (Whisper) and read-aloud narration (Kokoro TTS) — are **optional external services**. They are not bundled in the Docker image. Point the diary at them if you run them on your network; leave them unconfigured and everything else works unchanged — read-aloud simply falls back to the browser's built-in voices, and the mic button goes quiet.
-
-## What Edelmore Is Not
-
-- A journal with prompts, mood tracking, or any kind of AI interlocutor.
-- A sharing platform. Edelmore has no concept of sharing an entry with anyone.
-- A cloud service. Edelmore runs on your homelab, full stop.
-- A tutorial product. Edelmore is meant to be picked up and used without instructions.
-
-## Your First Session
-
-You open your laptop, navigate to `edelmore.local`, and a book is waiting on a wooden surface — your book, your cover, your name in serif type. You tap it. The cover lifts and the book falls open to today's page. The date is in the upper corner. The page is blank.
-
-You start typing. The font is warm, the paper is cream, the words land where you put them. Two seconds after you stop, the page saves itself — silently, no banner, no notification. You write three paragraphs and your hand gets tired. You tap the small quill in the corner. It glows. You speak the next paragraph. You tap the quill again. The words appear under the ones you typed.
-
-When you're done you close the laptop. There is nothing to remember to do. Tomorrow the book opens to a fresh page; yesterday's stays where you left it. You can turn back to it whenever you want.
-
-## How It Differs
-
-Edelmore is closest in spirit to Day One but inverts its choices: local rather than cloud, book-shaped rather than card-shaped, accessible voice-first rather than keyboard-first, free rather than subscription, single-purpose rather than feature-rich. It is closer in form to a children's book than to any diary app on the market.
-
-## Architecture
-
-- **Frontend + backend.** A single SvelteKit application (`adapter-node`). Server endpoints handle auth, autosave, transcription routing, and narration routing.
-- **Storage.** SQLite, one file. Three tables: `users`, `entries` (one per user per day), `sessions`.
-- **Page-turn animation.** StPageFlip, wrapped in a Svelte action.
-- **Transcription (optional).** A separate Whisper service on the network, called over HTTP via `/api/transcribe`. Audio captured via the browser's MediaRecorder, posted as webm/opus, returned as text. Not bundled in the image.
-- **Read-aloud (optional).** A separate Kokoro TTS service, called via `/api/speak`. The server proxies requests to `/dev/captioned_speech` with `stream=true`, so the first audio chunk arrives in ~2 seconds regardless of entry length; words are highlighted continuously as they're spoken. The shim can unload the GPU model after an idle timeout (via `TTS_UNLOAD_URL` on the [sageframe-no-kaji/Kokoro-FastAPI](https://github.com/sageframe-no-kaji/Kokoro-FastAPI) fork, which reloads lazily on the next request) or stop the container via the Docker remote API. Not bundled in the image.
-- **Network.** Caddy reverse-proxy on the homelab. Tailscale MagicDNS extends the same hostname to phones and tablets outside the house. LAN-only devices (such as a Chromebook without Tailscale) work when at home.
-- **Persistence.** ZFS dataset under the homelab's Sageframe convention. Sanoid snapshots; Syncoid to a backup pool.
-
-## Tech Stack
-
-- SvelteKit (TypeScript, Svelte 5 runes), `adapter-node`
-- SQLite via `better-sqlite3`
-- Tailwind CSS v4
-- StPageFlip
-- argon2id for PIN hashing
-- WhisperX (separate, optional service) for transcription
-- Kokoro TTS (separate, optional service) for read-aloud narration
-- Docker + Caddy for deployment
-
-## Current State
-
-| | |
-|---|---|
-| **Built** | PIN auth, autosave, cottage-core book skin, page-turn navigation, calendar + TOC, customizable covers, voice transcription, streaming read-aloud narration with per-word highlighting. |
-| **Packaging** | Multi-stage production Docker image published to ghcr.io; homelab deploy via the Sageframe pattern. |
-| **Optional** | Whisper transcription and Kokoro read-aloud — external services, not bundled in the image. |
-
-## Requirements
-
-- Docker and Docker Compose on the host
-- DNS resolution for the chosen hostname (dnsmasq or equivalent), plus Tailscale MagicDNS for remote devices
-- ZFS dataset for persistent storage (optional, recommended for snapshots)
-- *Optional:* a reachable WhisperX service for transcription, and/or a Kokoro TTS service for read-aloud. The diary runs without either.
-
-## Installation
-
-```bash
-git clone https://github.com/sageframe-no-kaji/edelmore-diary
-cd edelmore-diary
-cp .env.example .env
-# edit .env: DATABASE_URL is required. TRANSCRIPTION_URL (Whisper) and
-# TTS_URL (Kokoro) are optional — leave them blank to run without voice.
-# Set TZ to your household's timezone, and set ADMIN_PIN to lock the
-# /admin accounts page once first-run setup is done.
-docker compose up -d
+```
+edelmore/
+├── apps/
+│   ├── diary/          # SvelteKit + SQLite, shipped v1.2
+│   └── reader/         # seed + docs, no code yet
+├── packages/           # empty until extraction is justified
+├── .github/workflows/  # repo-wide CI (verify stack + diary image publish)
+├── biome.json          # repo-wide lint/format
+├── lefthook.yml        # repo-wide pre-commit
+├── CLAUDE.md           # repo-wide working notes
+├── ho-process/         # private practitioner work (gitignored)
+└── package.json        # npm workspace root
 ```
 
-A pre-built image for `linux/amd64` is published to GitHub Container Registry on every push to `main`:
+## Working in the workspace
+
+The repo uses **npm workspaces**. Root-level scripts delegate to apps via `--workspaces --if-present`, so a script that doesn't apply to a given app is silently skipped.
 
 ```bash
-docker pull ghcr.io/sageframe-no-kaji/edelmore-diary:latest
-```
-
-There are no seed PINs. On first run against an empty database, visit `/admin` to create users and set their 4-digit PINs. PINs are changed afterward from each user's `/settings` page. The `/admin` page itself is gated by `ADMIN_PIN` (in `.env`) — leave it unset only during first-run setup.
-
-Serve the diary through TLS (Caddy with an internal CA in the homelab pattern). Production builds mark the session cookie `Secure`, so browsers will drop it over plain `http://host:3000` and login will silently loop.
-
-## Development
-
-```bash
+# Install everything (hoists into root node_modules)
 npm install
-cp .env.example .env
+
+# Run the diary in dev mode
 npm run dev
+
+# Repo-wide verification
+npm run lint
+npm run check
+npm run test          # full suite
+npm run test:coverage # enforces the 95%-line floor
+
+# Build all buildable apps
+npm run build
 ```
 
-Schema migrations run automatically against `data/edelmore.db` on server start.
+To run a script in a specific app: `npm run <script> -w apps/diary`.
+
+## Pre-commit verification
+
+`lefthook` runs Biome, the full lint pass, `svelte-check`, and the coverage-enforced
+test suite on every commit. Install the hooks once after cloning:
+
+```bash
+npx lefthook install
+```
+
+## Deployment
+
+Each app deploys independently. The diary's pattern (build-on-host from git on the
+homelab jodo node, image-published-as-byproduct via GHCR) is documented in
+`apps/diary/CLAUDE.md → Deployment`. The reader's deployment will follow the same
+Sageframe pattern when there's code to deploy.
 
 ## License
 
@@ -114,4 +74,4 @@ MIT.
 
 ---
 
-*Edelmore is part of [Sageframe](https://sageframe.net). Built for Iona, Ada, and Isla.*
+*Edelmore is part of [atmarcus.net](https://atmarcus.net). The diary was built first for Iona, who wanted an Anne Frank–style journal on her own terms. The reader exists because once you have a book that reads itself to you, you stop wanting anything else.*
