@@ -38,8 +38,7 @@ Per-app. See `apps/diary/CLAUDE.md → Deployment` for the diary's build-on-host
 
 ## Project documents
 
-Kamae chain lives in `ho-process/` (gitignored — private practitioner work):
-- `ho-process/kamae-1-edelmore-diary-seed.md`
-- `ho-process/kamae-2-edelmore-system-design.md`
-- `ho-process/kamae-4-ho-outline.md`
-- `ho-process/hos/` — per-ho documents
+Kamae chains are per-app. Each app keeps its own `ho-process/` directory (gitignored — private practitioner work):
+
+- `apps/diary/ho-process/` — diary's chain (seed, system design, ho outline, per-ho docs)
+- `apps/reader/ho-process/` — reader's chain (when it exists; the original seed is preserved in `apps/reader/docs/seed.md`)

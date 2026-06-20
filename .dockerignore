@@ -20,8 +20,8 @@
 # Practitioner-private; never in images
 .claude
 **/.claude
-ho-process/
-prompts/
+**/ho-process
+**/prompts
 
 # Tooling configs not needed at runtime
 biome.json

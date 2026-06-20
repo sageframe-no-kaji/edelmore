@@ -1,6 +1,8 @@
 # Edelmore Reader — Seed
 
-*Kamae 1, fast pass. Sibling project to Edelmore Diary; depends on a refactor of the diary before it can responsibly start.*
+*Kamae 1, fast pass. Sibling app to Edelmore Diary inside the Edelmore monorepo; awaits per-package extraction of diary primitives and bird-narrator premise validation before code starts.*
+
+*Updated 2026-06-19 to reflect the workspace conversion — the diary now lives at `apps/diary/` and this seed at `apps/reader/docs/seed.md`. The original Kamae-1 thinking is preserved; only the dependency framing has moved from "cross-repo refactor" to "in-workspace package extraction."*
 
 ---
 
@@ -8,11 +10,11 @@
 
 Read-along ebook tools exist (OpenReader WebUI, Chapter, Voice Dream Reader, Speechify, Calibre's viewer, Kindle's TTS, Microsoft Edge's read-aloud, @Voice on Android) and most of them solve the technical problem competently — EPUB parsing, TTS, word-by-word highlighting are mature commodity capabilities. What none of them solve is the *experience*: every one of them feels like reading software, not reading a book. Utilitarian panels, generic typography, route-style page changes, no spatial sense of where you are in the volume.
 
-For Iona — and any kid with dysarthric speech, dyslexia, attention differences, or just a preference for being read to — the difference between "software that reads at you" and "a warm book that's also reading itself to you" is the difference between using a tool and inhabiting an experience. The diary has already built the second thing. The reader fork is "lift the diary's book-feeling into reading published content."
+For Iona — and any kid with dysarthric speech, dyslexia, attention differences, or just a preference for being read to — the difference between "software that reads at you" and "a warm book that's also reading itself to you" is the difference between using a tool and inhabiting an experience. The diary has already built the second thing. The reader is "lift the diary's book-feeling into reading published content."
 
 ## Landscape
 
-**Closest existing tools.** OpenReader WebUI is the nearest neighbor — self-hosted, Kokoro-FastAPI integration, EPUB + PDF, IndexedDB for offline, word-level read-along. Open source. Same technical pipeline Edelmore-diary just shipped. Their UI is a standard reader pane. **The technical capability is solved knowledge; the experience is what's scarce.** Chapter occupies similar ground.
+**Closest existing tools.** OpenReader WebUI is the nearest neighbor — self-hosted, Kokoro-FastAPI integration, EPUB + PDF, IndexedDB for offline, word-level read-along. Open source. Same technical pipeline `apps/diary` ships. Their UI is a standard reader pane. **The technical capability is solved knowledge; the experience is what's scarce.** Chapter occupies similar ground.
 
 **Commercial accessibility readers.** Voice Dream Reader (mobile-only, paid, gold standard for dyslexia), Speechify (subscription, multi-platform, AI voices). Both treat the experience as functional — get the words spoken, highlight them as they go, get out of the way. Neither has anything like a book metaphor.
 
@@ -47,7 +49,7 @@ SvelteKit, SQLite, Docker, Sageframe-deployed. Same stack as the diary. Same Kok
 
 **Crucial difference from the diary:** content is read-only, known up front, and never changes during a reading session. Pagination becomes geometric inspection of CSS Multi-column Layout flow rather than overflow-detected textareas. The diary's textarea-overflow pagination mechanism doesn't apply and isn't needed.
 
-**Crucial dependency:** this fork is only responsible to start *after* Edelmore Diary's codebase has been refactored to extract shared modules (the book primitive, the narration stack, the design tokens). Without that refactor, the fork is either copy-paste duplication (bad) or coupled to the diary's evolving internals (worse). The refactor itself is non-trivial — probably a multi-ho effort in the diary project — but it pays for itself by making the reader fork a thin layer rather than a parallel codebase.
+**Crucial dependency:** the workspace structural move is done — `apps/diary` and `apps/reader` are sibling apps in the Edelmore monorepo, with `packages/` sitting empty and ready to receive shared code. What remains is the per-package **extraction** of the diary's book primitive, narration stack, and design tokens out of `apps/diary/src/lib/` and into `packages/`. Without that extraction, the reader is either copy-paste duplication (bad) or directly importing from `apps/diary/src/lib/` (a sibling-app cross-dependency, also bad). The extraction itself is non-trivial — likely a multi-ho effort inside `apps/diary` — but the workspace makes it a mechanical lift rather than a cross-repo refactor.
 
 ## Constraints
 
@@ -97,7 +99,7 @@ SvelteKit, SQLite, Docker, Sageframe-deployed. Same stack as the diary. Same Kok
 
 ## Where Tyro Is Starting From
 
-- **The diary codebase**, post-refactor (this is the dependency).
+- **The diary codebase** as `apps/diary` inside the Edelmore workspace, with shared primitives still in `apps/diary/src/lib/` awaiting extraction into `packages/`.
 - **EPUB parsing**: new territory. Libraries exist (`epub2` for Node, `epub.js` for browser, `ebooklib` for Python). OpenReader's open-source code is reference material.
 - **CSS Multi-column Layout**: well-documented, widely supported, not previously used in the diary. Quick learning curve.
 - **Everything else** — Svelte, SQLite, Docker, Sageframe, Kokoro, narration, page-turn, design tokens — already fluent.
@@ -106,24 +108,28 @@ SvelteKit, SQLite, Docker, Sageframe-deployed. Same stack as the diary. Same Kok
 
 - How to consume an open format (EPUB) without writing a parser from scratch. The diary defined its own data shape; the reader consumes someone else's.
 - CSS Multi-column Layout as a primary pagination strategy.
-- Whether the refactor of the diary into shared modules is worth its own cost — the reader fork is the test.
+- Whether the extraction of the diary's shared primitives into `packages/` is worth its own cost — the reader is the test.
 
 ## Dependencies (load-bearing)
 
-The reader fork **cannot responsibly start until the diary has been refactored** into reusable modules. Approximate decomposition needed in the diary project:
+The reader **cannot responsibly start writing code until two gates clear**:
 
-- **`@edelmore/book`** — Cover, ExLibris, Spread, page-turn animation (View Transitions), stacks, seam, gutter shadow. The book metaphor as a component library. No diary-specific code.
-- **`@edelmore/narration`** — `BirdNarrator` finally as a real component (currently inline in `+layout.svelte`), `ReaderView`, tokenize/findWordIndex, the `/api/speak` shim, voice picker. No diary-specific code.
-- **`@edelmore/design`** — Cottage-core Tailwind tokens, color palette, EB Garamond / Cedarville Cursive setup, paper texture. No diary-specific code.
+1. **Per-package extraction.** The diary's book primitive, narration stack, and design tokens live tangled inside `apps/diary/src/lib/` and `apps/diary/src/routes/(authenticated)/+layout.svelte`. They need to be lifted into the workspace's `packages/`:
 
-These exist today as code, but tangled inside the diary's `+layout.svelte` and components folder. Extraction is real work — a multi-ho effort within the diary project. Worth doing for the diary's own clarity even if the reader fork never happens; required if it does.
+   - **`@edelmore/book`** — Cover, ExLibris, Spread, page-turn animation (View Transitions), stacks, seam, gutter shadow. The book metaphor as a component library. No diary-specific code.
+   - **`@edelmore/narration`** — `BirdNarrator` finally as a real component (currently inline in `+layout.svelte`), `ReaderView`, tokenize/findWordIndex, the `/api/speak` shim, voice picker. No diary-specific code.
+   - **`@edelmore/design`** — Cottage-core Tailwind tokens, color palette, EB Garamond / Cedarville Cursive setup, paper texture. No diary-specific code.
 
-A pragmatic sequencing question: do the refactor before the diary v1.0 ships (slows the diary down for cleaner foundations), or after (ships the diary first, refactors when forking pressure forces it). Lean: after, because the diary's pre-v1.0 priorities (deploy, demo, website) are time-sensitive in a way the reader fork is not.
+   These exist today as working code; extraction is real work — likely a multi-ho effort inside `apps/diary` — but the workspace makes it mechanical: import paths shift from `$lib/...` to `@edelmore/...`, the packages get hoisted at the workspace root, no cross-repo synchronization. Worth doing for the diary's own clarity even if the reader never happens; required if it does.
+
+2. **Premise validation.** Does Iona actually use the diary's bird-narrator? If she does, the reader's premise is validated and extraction becomes worthwhile. If she doesn't, this seed gets archived and the diary keeps its primitives tangled.
+
+The earlier pragmatic sequencing question — refactor before or after diary v1.0 — has resolved itself by happening naturally: diary tagged v1.2 first, the workspace structural move landed the same day, and per-package extraction remains unscheduled. Deferring the extraction was the right call; the diary's pre-v1.0 deploy/demo work wasn't slowed by speculative cleanup.
 
 ## Open Questions
 
-- **Server-side vs browser-side EPUB parsing.** Server-side is more consistent; browser-side keeps uploaded books off the server's disk (privacy-nicer, matches Edelmore-diary's posture). Worth resolving early.
-- **The "@edelmore/*" module names.** Just placeholders. May or may not be packaged as separate npm packages vs. just internal directories sharing across a monorepo. Decision deferred to the refactor.
+- **Server-side vs browser-side EPUB parsing.** Server-side is more consistent; browser-side keeps uploaded books off the server's disk (privacy-nicer, matches `apps/diary`'s posture). Worth resolving early.
+- ~~**The "@edelmore/*" module names.** Just placeholders. May or may not be packaged as separate npm packages vs. just internal directories sharing across a monorepo. Decision deferred to the refactor.~~ **Resolved 2026-06-19:** internal npm-workspace packages under `packages/`. Not published to a registry; consumed by sibling apps via workspace symlinks. Names (`@edelmore/book`, `@edelmore/narration`, `@edelmore/design`) carried forward as canonical.
 - **Reading position granularity.** Character offset per chapter? Or word index? Or EPUB CFI (the spec-defined canonical fragment identifier)? CFI is the right answer if the reader ever wants to interoperate with other readers; character offset is simpler if it doesn't.
 - **Whether Iona will actually use it.** The whole project's value rests on her wanting to be read to. The diary will tell us — if the bird is loved, the reader follows naturally; if the bird is ignored, this seed gets archived.
 - **Audio caching.** Generating Kokoro audio for the same chapter every time it's opened is wasteful. Cache key: `(book_id, chapter_id, voice, speed)`. Cache to disk on the homelab. Likely a v1.1 feature; flag now.
@@ -133,4 +139,4 @@ A pragmatic sequencing question: do the refactor before the diary v1.0 ships (sl
 
 - OpenReader WebUI and Chapter are direct technical references. Read their EPUB-parsing and Kokoro integration code before writing anything. Save yourself the rediscovery.
 - The differentiation is *not technical*. It's *experiential*. If the implementation ever drifts away from the book metaphor — into "just another web reader with TTS" — the project has lost its reason to exist.
-- This seed pre-empts itself. Don't open ho-01 here until the diary has shipped v1.0 and the refactor decision has been made.
+- This seed pre-empts itself. Don't open ho-01 here until both gates have cleared: (1) the diary's shared primitives have been extracted into `packages/`, and (2) Iona's use of the diary's bird has validated the read-along premise. The diary shipped v1.2 and the workspace conversion landed on 2026-06-19; neither gate has cleared yet.

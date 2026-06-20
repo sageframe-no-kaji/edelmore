@@ -18,14 +18,13 @@ Shared primitives will live under `packages/` (e.g., `@edelmore/book`, `@edelmor
 ```
 edelmore/
 ├── apps/
-│   ├── diary/          # SvelteKit + SQLite, shipped v1.2
+│   ├── diary/          # SvelteKit + SQLite, shipped v1.2 (ho-process/ inside)
 │   └── reader/         # seed + docs, no code yet
 ├── packages/           # empty until extraction is justified
 ├── .github/workflows/  # repo-wide CI (verify stack + diary image publish)
 ├── biome.json          # repo-wide lint/format
 ├── lefthook.yml        # repo-wide pre-commit
 ├── CLAUDE.md           # repo-wide working notes
-├── ho-process/         # private practitioner work (gitignored)
 └── package.json        # npm workspace root
 ```
 
