@@ -1,44 +1,11 @@
 @import "tailwindcss";
 @import "@edelmore/design";
 
+/* Tell Tailwind v4 to scan the workspace package for utility class usage,
+ * so classes used inside @edelmore/book's .svelte files get generated. */
+@source "../../../packages/book";
+
 /* Prevent the large flip-zone overhang from creating a horizontal scrollbar. */
 body {
   overflow-x: clip;
-}
-
-/* ── Page turn animation (two-faced 3D rotation around the spine) ─────────
- * These classes belong with the flip primitive. They stay here until Ho-02
- * lifts the flip into <BookShell> in @edelmore/book, at which point they
- * move into that package's CSS. */
-
-/* Perspective context for the page rotation */
-.flip-stage {
-  perspective: 1500px;
-  perspective-origin: center center;
-}
-
-/* The rotating wrapper sits over one half of the book-shell (the page being
- * turned). It contains two absolutely-positioned faces with
- * `backface-visibility: hidden` so only one is visible at a time. */
-.flip-snapshot {
-  position: absolute;
-  top: 0;
-  width: 50%;
-  height: 100%;
-  pointer-events: none;
-  transform-style: preserve-3d;
-  will-change: transform;
-  z-index: 50;
-}
-
-/* Forward: rotating wrapper covers the right half, pivots at the spine */
-.flip-snapshot.flip-forward {
-  left: 50%;
-  transform-origin: left center;
-}
-
-/* Backward: rotating wrapper covers the left half, pivots at the spine */
-.flip-snapshot.flip-backward {
-  left: 0;
-  transform-origin: right center;
 }

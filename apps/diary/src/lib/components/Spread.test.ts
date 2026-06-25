@@ -1,7 +1,7 @@
+import { Spread } from '@edelmore/book';
 import { cleanup, render, screen } from '@testing-library/svelte';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import Spread from './Spread.svelte';
 
 afterEach(() => cleanup());
 

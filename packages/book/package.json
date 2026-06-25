@@ -1,0 +1,25 @@
+{
+  "name": "@edelmore/book",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Edelmore book primitives — leather shell, page-flip animation, two-page spread. Shared across apps/diary and apps/reader.",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./BookShell.svelte": "./BookShell.svelte",
+    "./Spread.svelte": "./Spread.svelte",
+    "./styles.css": "./styles.css"
+  },
+  "files": [
+    "index.ts",
+    "BookShell.svelte",
+    "Spread.svelte",
+    "styles.css"
+  ],
+  "dependencies": {
+    "@edelmore/design": "*"
+  },
+  "peerDependencies": {
+    "svelte": "^5.0.0"
+  }
+}

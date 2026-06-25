@@ -1,0 +1,48 @@
+/* @edelmore/book — global styles
+ *
+ * These classes must apply to imperatively-created DOM (the flip clones)
+ * and imperatively-added classes (.flip-hidden on live pages during a flip).
+ * They cannot be Svelte-scoped — scoped classes get a generated suffix that
+ * cloned nodes inherit from their source (and that imperative createElement
+ * does not have at all), so global is the only correct shape.
+ */
+
+/* Perspective context for the page rotation. Applied to <BookShell>'s outer
+ * frame element. Defines the 3D space in which the rotating wrapper spins. */
+.flip-stage {
+  perspective: 1500px;
+  perspective-origin: center center;
+}
+
+/* The rotating wrapper sits over one half of the book-shell (the page being
+ * turned). It contains two absolutely-positioned faces with
+ * `backface-visibility: hidden` so only one is visible at a time. */
+.flip-snapshot {
+  position: absolute;
+  top: 0;
+  width: 50%;
+  height: 100%;
+  pointer-events: none;
+  transform-style: preserve-3d;
+  will-change: transform;
+  z-index: 50;
+}
+
+/* Forward: rotating wrapper covers the right half, pivots at the spine */
+.flip-snapshot.flip-forward {
+  left: 50%;
+  transform-origin: left center;
+}
+
+/* Backward: rotating wrapper covers the left half, pivots at the spine */
+.flip-snapshot.flip-backward {
+  left: 0;
+  transform-origin: right center;
+}
+
+/* Hides the live page underneath the rotating wrapper during a flip so the
+ * NEW content doesn't bleed around the rotating wrapper or peek through
+ * clip-path bump mismatches. Added by the flip primitive imperatively. */
+.flip-hidden {
+  visibility: hidden !important;
+}
