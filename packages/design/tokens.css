@@ -1,0 +1,17 @@
+@theme {
+  --font-serif: "EB Garamond", Georgia, serif;
+
+  --color-cream-50: #fdfbf7;
+  --color-cream-100: #f9f3e8;
+  --color-cream-200: #f0e4cc;
+  --color-cream-300: #e4cfa8;
+  --color-cream-400: #d4b07f;
+  --color-cream-500: #c4915a;
+  --color-cream-600: #a8713d;
+  --color-cream-700: #865526;
+  --color-cream-800: #653d18;
+  --color-cream-900: #442810;
+
+  --color-ink-900: #1a1209;
+  --color-ornament-gold: #8b6914;
+}

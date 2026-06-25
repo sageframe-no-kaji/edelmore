@@ -1,0 +1,20 @@
+{
+  "name": "@edelmore/design",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Edelmore design substrate — tokens, fonts, paper texture. Shared across apps/diary and apps/reader.",
+  "type": "module",
+  "exports": {
+    ".": "./index.css",
+    "./index.css": "./index.css",
+    "./tokens.css": "./tokens.css",
+    "./fonts.css": "./fonts.css",
+    "./base.css": "./base.css"
+  },
+  "files": [
+    "index.css",
+    "tokens.css",
+    "fonts.css",
+    "base.css"
+  ]
+}
