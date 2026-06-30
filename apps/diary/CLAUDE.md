@@ -33,16 +33,28 @@ covers diary-specific concerns only.
 
 ## Deployment
 
-Production runs on **jodo** (homelab Docker host, x86_64) as `svc-edelmore-diary`, port
-`8025:3000`, behind Caddy at `diary.sageframe.net`. Voice services (Whisper transcription,
-Kokoro TTS) are separate homelab services on **shingan** — optional; the diary degrades
-gracefully without them.
+Two production environments:
 
-**Deploy pattern: build-on-host from git.** jodo holds a read-only deploy-key clone of this
-repo at `/opt/services/jodo-edelmore-diary/code` (the deploy key is registered on the GitHub
-repo under "jodo-build-deploy"; jodo's `~/.ssh/config` maps `github.com` → `~/.ssh/edelmore_deploy`).
-After the monorepo refactor, the host `docker-compose.yml` must point to the diary
-app's Dockerfile via the workspace root as build context:
+| Env | Host | Container | URL | Image source |
+|---|---|---|---|---|
+| **household prod** | tenzo | `svc-edelmore-diary` (`8025:3000`) | `diary.sageframe.net` (Caddy) | build-on-host from `./code` (a monorepo clone) |
+| **public demo** | miseba | `svc-edelmore-demo` (`8181:3000`) | `edelmore.sageframe.net` (cloudflared) | `ghcr.io/sageframe-no-kaji/edelmore-diary:latest`, image built by `.github/workflows/docker.yml` on every push to `main` |
+
+Voice services (WhisperX transcription, Kokoro TTS) are separate homelab services
+on **shingan** — optional; the diary degrades gracefully without them. The demo
+has `DEMO_MODE=true` in its `.env` so unauthenticated visitors land on `/welcome`;
+prod leaves it unset and sends them straight to `/login`.
+
+### Prod deploy (tenzo)
+
+Build-on-host from a deploy-key clone of this monorepo at
+`/opt/services/tenzo-edelmore-diary/code`. The deploy key
+(`~/.ssh/edelmore_deploy`) is registered on the GitHub repo under
+**tenzo-edelmore-deploy**, and tenzo's `~/.ssh/config` maps a dedicated alias —
+`github.com-edelmore` → that key — so the repo's remote is
+`git@github.com-edelmore:sageframe-no-kaji/edelmore.git` and pulls don't depend
+on agent forwarding. Compose points at the diary's Dockerfile via the workspace
+root as build context:
 
 ```yaml
 build:
@@ -50,25 +62,35 @@ build:
   dockerfile: apps/diary/Dockerfile
 ```
 
-A deploy is then:
+A deploy is:
 
 ```
-ssh jodo 'cd /opt/services/jodo-edelmore-diary && git -C code pull && docker compose up -d --build'
+ssh tenzo 'cd /opt/services/tenzo-edelmore-diary && git -C code pull && docker compose up -d --build'
 ```
 
 Native amd64 build, no image transfer. The SQLite DB lives on the `./data` bind-mount
-(`/opt/services/jodo-edelmore-diary/data`) and is never touched by a rebuild. Push to `main`
-first so the host pulls verified code (CI gates lint/check/tests on `main`, and also publishes
-a `ghcr.io` image as a byproduct — currently unused by the host).
+(`/opt/services/tenzo-edelmore-diary/data`) and is never touched by a rebuild. Push
+to `main` first so the host pulls verified code (CI gates lint/check/tests on `main`,
+and also publishes the GHCR image that the demo consumes).
 
 The host compose is tracked in the `sageframe-config` repo
-(`jodo/opt/services/jodo-edelmore-diary/docker-compose.yml`); sync it after any host-side change
-via the `sageframe-config-sync` skill.
+(`tenzo/opt/services/tenzo-edelmore-diary/docker-compose.yml`); sync it after any
+host-side change via the `sageframe-config-sync` skill.
 
-**Migration note (first deploy after refactor):** The host compose currently has
-`build: ./code` — that breaks because the diary's Dockerfile is no longer at the repo root.
-Update the host compose to the `context: ./code` + `dockerfile: apps/diary/Dockerfile`
-form above before the first post-refactor deploy.
+### Demo deploy (miseba)
+
+The demo runs the GHCR image, so deploying is just: wait for CI to publish a new
+`:latest`, then pull and recreate on miseba:
+
+```
+ssh miseba 'cd /opt/services/miseba-edelmore-demo && docker compose pull && docker compose up -d'
+```
+
+Demo `.env` lives only on miseba (`/opt/services/miseba-edelmore-demo/.env`) —
+contains `SESSION_SECRET`, `ADMIN_PIN`, `TAYLOR_PIN`, and `DEMO_MODE=true`. The
+host compose is tracked in `sageframe-config` at
+`miseba/opt/services/miseba-edelmore-demo/docker-compose.yml`. The demo resets
+nightly via a host cron running `reset.sh`.
 
 ## References
 
