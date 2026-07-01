@@ -7,13 +7,12 @@ import CoverPage from '$lib/components/CoverPage.svelte';
 import ExLibrisPage from '$lib/components/ExLibrisPage.svelte';
 import MicQuill from '$lib/components/MicQuill.svelte';
 import { BookShell, Spread } from '@edelmore/book';
-import {
-  BirdNarrator,
-  ReaderView,
-  VoicePicker,
+import BirdNarrator, {
   type BirdNarratorApi,
   type BirdPhase,
-} from '@edelmore/narration';
+} from '$lib/components/BirdNarrator.svelte';
+import ReaderView from '$lib/components/ReaderView.svelte';
+import VoicePicker from '$lib/components/VoicePicker.svelte';
 import TocPage from '$lib/components/TocPage.svelte';
 import { findCover } from '$lib/covers.js';
 import { applyPageEdit, insertAtAnchor, sideForOffset, spreadForOffset } from '$lib/content.js';

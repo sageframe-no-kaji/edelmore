@@ -1,6 +1,6 @@
 <script lang="ts">
 import { tick } from 'svelte';
-import { findWordIndex, tokenize } from './tokenize.js';
+import { findWordIndex, tokenize } from '$lib/tokenize.js';
 
 let {
   text,

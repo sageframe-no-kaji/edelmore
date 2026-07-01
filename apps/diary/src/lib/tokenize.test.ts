@@ -1,5 +1,5 @@
-import { findWordIndex, tokenize } from '@edelmore/narration/tokenize';
 import { describe, expect, it } from 'vitest';
+import { findWordIndex, tokenize } from './tokenize.js';
 
 describe('tokenize', () => {
   it('returns an empty array for empty input', () => {

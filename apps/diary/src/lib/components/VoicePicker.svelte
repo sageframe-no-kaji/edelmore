@@ -20,7 +20,7 @@ export const KOKORO_VOICE_LABELS: Record<string, string> = {
 
 <script lang="ts">
 import { untrack } from 'svelte';
-import { audioBlobUrlFromBase64, isKokoroVoiceUri } from './narration.js';
+import { audioBlobUrlFromBase64, isKokoroVoiceUri } from '@edelmore/narration';
 
 interface Props {
   value: string | null;

@@ -25,13 +25,13 @@ const CHAIN_GAP_MS = 0;
 </script>
 
 <script lang="ts">
-import { onDestroy } from 'svelte';
 import {
   audioBlobUrlFromBase64,
   isKokoroVoiceUri,
   type StreamChunk,
   type WordTiming,
-} from './narration.js';
+} from '@edelmore/narration';
+import { onDestroy } from 'svelte';
 
 interface Props {
   text: string;
