@@ -1,0 +1,34 @@
+{
+  "name": "@edelmore/narration",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Edelmore narration primitives — bird state machine, voice picker, read-along view, TTS handler factories. Shared across apps/diary and apps/reader.",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./narration": "./narration.ts",
+    "./tokenize": "./tokenize.ts",
+    "./BirdNarrator.svelte": "./BirdNarrator.svelte",
+    "./VoicePicker.svelte": "./VoicePicker.svelte",
+    "./ReaderView.svelte": "./ReaderView.svelte",
+    "./api/speak": "./api/speak.ts",
+    "./api/voices": "./api/voices.ts"
+  },
+  "files": [
+    "index.ts",
+    "narration.ts",
+    "tokenize.ts",
+    "BirdNarrator.svelte",
+    "VoicePicker.svelte",
+    "ReaderView.svelte",
+    "api/speak.ts",
+    "api/voices.ts"
+  ],
+  "dependencies": {
+    "@edelmore/design": "*"
+  },
+  "peerDependencies": {
+    "@sveltejs/kit": "^2.0.0",
+    "svelte": "^5.0.0"
+  }
+}

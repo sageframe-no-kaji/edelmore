@@ -6,19 +6,19 @@ import CalendarModal from '$lib/components/CalendarModal.svelte';
 import CoverPage from '$lib/components/CoverPage.svelte';
 import ExLibrisPage from '$lib/components/ExLibrisPage.svelte';
 import MicQuill from '$lib/components/MicQuill.svelte';
-import ReaderView from '$lib/components/ReaderView.svelte';
 import { BookShell, Spread } from '@edelmore/book';
+import {
+  BirdNarrator,
+  ReaderView,
+  VoicePicker,
+  type BirdNarratorApi,
+  type BirdPhase,
+} from '@edelmore/narration';
 import TocPage from '$lib/components/TocPage.svelte';
 import { findCover } from '$lib/covers.js';
 import { applyPageEdit, insertAtAnchor, sideForOffset, spreadForOffset } from '$lib/content.js';
 import { todayIso } from '$lib/dates.js';
 import type { EntryDatePreview } from '$lib/db.js';
-import {
-  audioBlobUrlFromBase64,
-  isKokoroVoiceUri,
-  type StreamChunk,
-  type WordTiming,
-} from '$lib/narration.js';
 import { findSplitIndex, snapToWordBreak } from '$lib/overflow.js';
 import type { Snippet } from 'svelte';
 import { onMount, tick, untrack } from 'svelte';
@@ -130,7 +130,7 @@ $effect(() => {
       if (dateChanged) {
         content = d.content ?? '';
         serverContent = d.content ?? '';
-        stopBird();
+        birdNarrator?.stop();
       }
     }
   });
@@ -164,7 +164,7 @@ $effect(() => {
       // away mid-edit yanked the book out from under a writer who cleared
       // the page to rewrite it, and the retyped text could land on a
       // different day. flushEmptyEntry still prunes blank pages on leave.
-      stopBird();
+      birdNarrator?.stop();
       try {
         await fetch(`/api/entries/${date}`, { method: 'DELETE' });
         serverContent = c;
@@ -235,7 +235,7 @@ async function flushEmptyEntry() {
   const date = spreadState.date;
   entryDatePreviews = entryDatePreviews.filter((e) => e.entry_date !== date);
   serverContent = '';
-  stopBird();
+  birdNarrator?.stop();
   await fetch(`/api/entries/${date}`, { method: 'DELETE' });
 }
 
@@ -418,7 +418,19 @@ function onFlipPrev() {
   }
 }
 
-type BirdPhase = 'idle' | 'loading' | 'playing' | 'paused';
+// ── Bird narration — extracted to @edelmore/narration ────────────────────
+//
+// Behaviour: state machine, audio pipeline, voice dispatch, speed control,
+// and word-boundary tracking all live inside <BirdNarrator>. The diary keeps
+// only the consumer-side glue:
+//   - the imperative handle to call play/stop from auto-advance, etc.
+//   - the four-phase mirror (drives birdPlaying which swaps in ReaderView)
+//   - the current-word highlight (passed to ReaderView)
+//   - the per-spread start/until offsets (snapshotted into the bird at click)
+//   - the manual-flip-stops-bird effect (skipped when the flip was bird-led)
+//   - the onNarrationEnd auto-advance to the next spread
+// biome-ignore lint/style/useConst: bind:this requires let
+let birdNarrator: BirdNarratorApi | null = $state(null);
 let birdPhase = $state<BirdPhase>('idle');
 // True while the bird is actively narrating (playing OR paused). When true,
 // the entry page swaps its textareas for a read-only ReaderView with
@@ -427,55 +439,19 @@ const birdPlaying = $derived(birdPhase === 'playing' || birdPhase === 'paused');
 // Absolute char index of the word the bird is currently speaking. Null when
 // idle. ReaderView consumes this to highlight the active word.
 let currentNarrationCharIndex: number | null = $state(null);
-let birdRate = $state(1.0);
-// Absolute character position in `content` of the most recent boundary event.
-// Used to restart mid-playback at a new rate without losing position.
-let birdAbsoluteIndex = 0;
-// Spread we last auto-advanced *from*. Each spread auto-advances at most once,
-// so a user who manually flips back doesn't get yanked forward immediately.
-let birdLastAdvancedFromSpread = -1;
-// Set to true when the bird itself triggers a flip; consumed by the
-// spread-watching effect so the bird isn't stopped by its own page-turn.
+// Set to true when the consumer triggers a flip on the bird's behalf
+// (auto-advance). The spread-watching effect consumes this so the bird isn't
+// stopped by its own page-turn.
 let birdInitiatedFlip = false;
-// Set when the bird itself ends a spread and wants to continue on the next one.
-// Consumed by the spread-watching effect after the flip animation completes.
-let birdAutoAdvancePending = false;
 
-// ── TTS (Kokoro) path state ───────────────────────────────────────────────────
-// These are only live during Kokoro TTS playback. All are cleaned up by
-// cleanupTtsAudio(). The Web Speech path does not use any of these.
-let birdAudioEl: HTMLAudioElement | null = null;
-let birdAudioBlobUrl: string | null = null;
-let birdTtsBoundaryInterval: ReturnType<typeof setInterval> | null = null;
-let birdTtsTimings: WordTiming[] = [];
-let birdTtsBoundaryIdx = 0;
-let birdTtsBaseOffset = 0;
-let birdTtsFlipScheduledAt: number | null = null;
-// AbortController for the in-flight /api/speak fetch — lets stopBird()
-// cancel a loading request immediately instead of waiting for the response.
-let birdTtsFetchAbort: AbortController | null = null;
-// ReadableStream reader for the NDJSON body — cancelled by cleanupTtsAudio.
-let birdStreamReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-// Audio elements queued for sequential playback after the current chunk.
-let birdAudioQueue: Array<{ blobUrl: string; audioEl: HTMLAudioElement; audioOffset: number }> = [];
-// Absolute audio time (seconds) at which the currently-playing chunk starts.
-// Used in boundary polling: t = birdChunkTimeOffset + birdAudioEl.currentTime.
-let birdChunkTimeOffset = 0;
-// True once the upstream NDJSON stream has closed (no more chunks arriving).
-let birdStreamDone = false;
-// True when the current audio chunk ended but the next hasn't arrived yet.
-// The stream reader sets this to false and immediately starts the queued item.
-let birdWaitingForChunk = false;
-
-function stopBird() {
-  if (typeof window !== 'undefined' && window.speechSynthesis) {
-    window.speechSynthesis.cancel();
-  }
-  cleanupTtsAudio();
-  birdAutoAdvancePending = false;
-  birdPhase = 'idle';
-  currentNarrationCharIndex = null;
-}
+// Per-spread snapshot offsets, read by <BirdNarrator> when the user clicks
+// the bird from idle. Reactive so spread changes refresh the snapshot.
+// $derived.by wraps the body in a callback so TS doesn't see entryPageSpread
+// / splitPoints as referenced before their declarations further down.
+const birdStartOffset = $derived.by(() =>
+  entryPageSpread === 0 ? 0 : (splitPoints[entryPageSpread * 2 - 1] ?? 0)
+);
+const birdUntilOffset = $derived.by(() => splitPoints[entryPageSpread * 2 + 1] ?? null);
 
 // Manual page flip (any change in entryPageSpread that didn't come from the
 // bird itself) stops playback so the next click starts fresh on whatever
@@ -486,408 +462,37 @@ $effect(() => {
   untrack(() => {
     if (birdInitiatedFlip) {
       birdInitiatedFlip = false;
-      if (birdAutoAdvancePending) {
-        birdAutoAdvancePending = false;
-        // Start narration for the new spread from its beginning.
-        const startOffset = entryPageSpread === 0 ? 0 : (splitPoints[entryPageSpread * 2 - 1] ?? 0);
-        void speakFromOffset(startOffset);
-      }
       return;
     }
-    if (birdPhase !== 'idle') stopBird();
+    if (birdPhase !== 'idle') birdNarrator?.stop();
   });
 });
 
-// ── speakFromOffset dispatcher ───────────────────────────────────────────────
-//
-// Routes to the Kokoro TTS path (speakFromOffsetViaTts) when the selected
-// voice is a Kokoro slug; falls back to Web Speech (speakFromOffsetViaWebSpeech)
-// otherwise. Also falls back to Web Speech if the TTS path throws.
-
-async function speakFromOffset(offset: number) {
-  if (isKokoroVoiceUri(voiceURI)) {
-    try {
-      await speakFromOffsetViaTts(offset);
-      return;
-    } catch (e) {
-      console.warn('TTS playback failed; falling back to Web Speech', e);
-      // Intentional fall-through to Web Speech below.
-    }
-  }
-  speakFromOffsetViaWebSpeech(offset);
+// Page-boundary handler — fires ~500ms before the current spread's audio
+// ends. We flip the page AND preload the next spread's audio so the bird
+// chains seamlessly when current playback finishes. Audio of the current
+// spread keeps playing while the flip animates; the brief silence at the
+// tail of the flip is the natural gap before chained audio resumes.
+function handlePageBoundary() {
+  const nextSpread = entryPageSpread + 1;
+  if (nextSpread >= entrySpreadCount) return;
+  birdInitiatedFlip = true;
+  void diaryFlip('forward', () => {
+    entryPageSpread = nextSpread;
+  });
+  const nextStart = nextSpread === 0 ? 0 : (splitPoints[nextSpread * 2 - 1] ?? 0);
+  const nextEnd = splitPoints[nextSpread * 2 + 1] ?? null;
+  void birdNarrator?.preloadNext(nextStart, nextEnd);
 }
 
-async function speakFromOffsetViaTts(offset: number) {
-  cleanupTtsAudio();
+// Bird truly ended (last spread finished, nothing chained). Phase is already
+// 'idle' via onPhaseChange. The bird auto-chains spread-to-spread transitions
+// via preloadNext above, so this only fires at the end of the entry.
+function handleNarrationEnd() {}
 
-  // Synthesize only the current spread — fast startup, auto-continue on end.
-  const spreadEnd = splitPoints[entryPageSpread * 2 + 1]; // undefined = last spread
-  const textFromHere = content.slice(offset, spreadEnd);
-  if (!textFromHere.trim()) return;
-
-  birdPhase = 'loading';
-  birdAbsoluteIndex = offset;
-  birdTtsBaseOffset = offset;
-  birdChunkTimeOffset = 0;
-  birdStreamDone = false;
-  birdWaitingForChunk = false;
-
-  birdTtsFetchAbort = new AbortController();
-  let response: Response;
-  try {
-    response = await fetch('/api/speak', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: textFromHere, voice: voiceURI, speed: birdRate }),
-      signal: birdTtsFetchAbort.signal,
-    });
-    if (!response.ok) throw new Error(`TTS HTTP ${response.status}`);
-  } catch (e) {
-    if (birdPhase === 'loading') birdPhase = 'idle';
-    throw e;
-  }
-  // Keep birdTtsFetchAbort live so cleanupTtsAudio can abort the body stream.
-
-  // Bail out if cancelled while the fetch headers were in flight.
-  if (birdPhase !== 'loading') return;
-
-  const body = response.body;
-  if (!body) {
-    birdPhase = 'idle';
-    return;
-  }
-
-  birdStreamReader = body.getReader();
-  void readTtsStream(birdStreamReader);
-}
-
-// ── Streaming audio helpers ───────────────────────────────────────────────────
-
-function startChunkPlayback(blobUrl: string, audioEl: HTMLAudioElement, audioOffset: number) {
-  birdAudioEl = audioEl;
-  birdAudioBlobUrl = blobUrl;
-  birdChunkTimeOffset = audioOffset;
-  audioEl.playbackRate = birdRate;
-
-  audioEl.onplay = () => {
-    birdPhase = 'playing';
-    startBoundaryPolling();
-  };
-  audioEl.onpause = () => {
-    // Fires asynchronously — check paused flag to ignore rapid pause→resume.
-    if (birdPhase === 'playing' && birdAudioEl?.paused) birdPhase = 'paused';
-  };
-  audioEl.onended = () => advanceToNextChunk();
-  audioEl.onerror = () => {
-    cleanupTtsAudio();
-    birdPhase = 'idle';
-    currentNarrationCharIndex = null;
-  };
-
-  void audioEl.play();
-}
-
-function advanceToNextChunk() {
-  // Revoke the blob URL for the chunk that just finished.
-  if (birdAudioBlobUrl) {
-    URL.revokeObjectURL(birdAudioBlobUrl);
-    birdAudioBlobUrl = null;
-  }
-  birdAudioEl = null;
-
-  if (birdAudioQueue.length > 0) {
-    const next = birdAudioQueue.shift()!;
-    startChunkPlayback(next.blobUrl, next.audioEl, next.audioOffset);
-  } else if (birdStreamDone) {
-    handleNarrationEnd();
-  } else {
-    // More chunks are still arriving — wait for the stream reader to deliver one.
-    birdWaitingForChunk = true;
-  }
-}
-
-function handleNarrationEnd() {
-  cleanupTtsAudio();
-  currentNarrationCharIndex = null;
-  const hasNextSpread = entryPageSpread < entrySpreadCount - 1;
-  if (hasNextSpread) {
-    birdPhase = 'loading';
-    birdAutoAdvancePending = true;
-    birdInitiatedFlip = true;
-    diaryFlip('forward', () => { entryPageSpread += 1; });
-  } else {
-    birdPhase = 'idle';
-  }
-}
-
-function handleStreamChunk(chunk: StreamChunk, isFirstChunk: boolean) {
-  if (birdPhase === 'idle') return;
-
-  // Extend the cumulative timings so boundary polling and flip scheduling see all words.
-  birdTtsTimings = [...birdTtsTimings, ...chunk.words];
-  // Compute the flip schedule once we have enough timings.
-  if (isFirstChunk || birdTtsFlipScheduledAt === null) {
-    birdTtsFlipScheduledAt = computeFlipScheduleTime();
-  }
-
-  const blobUrl = audioBlobUrlFromBase64(chunk.audio, chunk.format);
-  const audioEl = new Audio(blobUrl);
-
-  if (isFirstChunk || birdWaitingForChunk) {
-    birdWaitingForChunk = false;
-    startChunkPlayback(blobUrl, audioEl, chunk.audioOffset);
-  } else {
-    birdAudioQueue.push({ blobUrl, audioEl, audioOffset: chunk.audioOffset });
-  }
-}
-
-async function readTtsStream(reader: ReadableStreamDefaultReader<Uint8Array>) {
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let firstChunk = true;
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-
-      if (birdPhase === 'idle') {
-        void reader.cancel();
-        return;
-      }
-
-      if (done) {
-        // Flush any partial line (upstream may omit trailing newline).
-        const remaining = buffer.trim();
-        if (remaining) {
-          try {
-            handleStreamChunk(JSON.parse(remaining) as StreamChunk, firstChunk);
-            firstChunk = false;
-          } catch { /* skip malformed */ }
-        }
-        birdStreamDone = true;
-        if (birdWaitingForChunk) {
-          // Audio ended while we were waiting for more chunks — narration done.
-          birdWaitingForChunk = false;
-          handleNarrationEnd();
-        } else if (birdPhase === 'loading') {
-          // Stream finished with no valid audio at all.
-          birdPhase = 'idle';
-        }
-        return;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
-      let newlineIdx: number;
-      while ((newlineIdx = buffer.indexOf('\n')) !== -1) {
-        const line = buffer.slice(0, newlineIdx).trim();
-        buffer = buffer.slice(newlineIdx + 1);
-        if (!line) continue;
-        try {
-          handleStreamChunk(JSON.parse(line) as StreamChunk, firstChunk);
-          firstChunk = false;
-        } catch { /* skip malformed */ }
-      }
-    }
-  } catch (e) {
-    if (birdPhase === 'idle') return; // expected — fetch was aborted by cleanupTtsAudio
-    console.warn('TTS stream error', e);
-    birdStreamDone = true;
-    if (birdPhase === 'loading') birdPhase = 'idle';
-  }
-}
-
-/**
- * Find the first word whose absolute char position is past the current
- * spread's end. Return that word's audio start time minus 250ms (lookahead
- * so the page turn lands just before the boundary word is spoken).
- */
-function computeFlipScheduleTime(): number | null {
-  if (entryPageSpread === birdLastAdvancedFromSpread) return null;
-  const currentSpreadEnd = splitPoints[entryPageSpread * 2 + 1];
-  if (currentSpreadEnd === undefined) return null;
-  const flipBoundary = currentSpreadEnd - birdTtsBaseOffset;
-  for (const w of birdTtsTimings) {
-    if (w.char_start > flipBoundary) {
-      return Math.max(0, w.start - 0.25);
-    }
-  }
-  return null;
-}
-
-function startBoundaryPolling() {
-  if (birdTtsBoundaryInterval) clearInterval(birdTtsBoundaryInterval);
-  birdTtsBoundaryInterval = setInterval(() => {
-    if (!birdAudioEl || birdAudioEl.paused) return;
-    // Absolute audio time across all chunks: chunk start offset + element position.
-    const t = birdChunkTimeOffset + birdAudioEl.currentTime;
-
-    // Advance the current-word pointer and update the highlight index.
-    // Skip timings whose server-side fuzzy match failed (char_end === char_start):
-    // moving the highlight to a stale cursor would yank the glow to the wrong
-    // word, then snap forward when the next match lands. Leave it on the last
-    // good word instead — audio still advances.
-    while (
-      birdTtsBoundaryIdx < birdTtsTimings.length &&
-      birdTtsTimings[birdTtsBoundaryIdx].start <= t
-    ) {
-      const word = birdTtsTimings[birdTtsBoundaryIdx];
-      if (word.char_end > word.char_start) {
-        birdAbsoluteIndex = birdTtsBaseOffset + word.char_start;
-        currentNarrationCharIndex = birdAbsoluteIndex;
-      }
-      birdTtsBoundaryIdx += 1;
-    }
-
-    // Trigger page-turn at the scheduled time.
-    if (birdTtsFlipScheduledAt !== null && t >= birdTtsFlipScheduledAt) {
-      birdTtsFlipScheduledAt = null;
-      birdLastAdvancedFromSpread = entryPageSpread;
-      birdInitiatedFlip = true;
-      onFlipNext();
-    }
-  }, 50);
-}
-
-function cleanupTtsAudio() {
-  if (birdTtsBoundaryInterval) {
-    clearInterval(birdTtsBoundaryInterval);
-    birdTtsBoundaryInterval = null;
-  }
-  if (birdAudioEl) {
-    // Null handlers before pause so async media events from this element
-    // can't corrupt state after we've moved on.
-    birdAudioEl.onplay = null;
-    birdAudioEl.onpause = null;
-    birdAudioEl.onended = null;
-    birdAudioEl.onerror = null;
-    birdAudioEl.pause();
-    birdAudioEl.src = '';
-    birdAudioEl = null;
-  }
-  if (birdAudioBlobUrl) {
-    URL.revokeObjectURL(birdAudioBlobUrl);
-    birdAudioBlobUrl = null;
-  }
-  // Clean up any queued (not-yet-playing) chunks.
-  for (const item of birdAudioQueue) {
-    item.audioEl.onplay = null;
-    item.audioEl.onpause = null;
-    item.audioEl.onended = null;
-    item.audioEl.onerror = null;
-    item.audioEl.pause();
-    item.audioEl.src = '';
-    URL.revokeObjectURL(item.blobUrl);
-  }
-  birdAudioQueue = [];
-  birdChunkTimeOffset = 0;
-  birdStreamDone = false;
-  birdWaitingForChunk = false;
-  // Cancel the NDJSON body stream so no further chunks are processed.
-  void birdStreamReader?.cancel();
-  birdStreamReader = null;
-  birdTtsTimings = [];
-  birdTtsBoundaryIdx = 0;
-  birdTtsFlipScheduledAt = null;
-  // Abort any in-flight fetch so a stale response can't arrive after stopBird.
-  birdTtsFetchAbort?.abort();
-  birdTtsFetchAbort = null;
-}
-
-function speakFromOffsetViaWebSpeech(offset: number) {
-  const textFromHere = content.slice(offset);
-  if (!textFromHere.trim()) return;
-  birdAbsoluteIndex = offset;
-  const synth = window.speechSynthesis;
-  const u = new SpeechSynthesisUtterance(textFromHere);
-  // Only apply the voiceURI when it's a Web Speech URI. If a Kokoro slug fell
-  // through here (TTS failure), let the browser pick its default voice.
-  if (voiceURI && !isKokoroVoiceUri(voiceURI)) {
-    const picked = synth.getVoices().find((v) => v.voiceURI === voiceURI);
-    if (picked) u.voice = picked;
-  }
-  u.rate = birdRate;
-  u.onstart = () => {
-    birdPhase = 'playing';
-  };
-  u.onboundary = (e) => {
-    birdAbsoluteIndex = offset + e.charIndex;
-    currentNarrationCharIndex = birdAbsoluteIndex;
-    if (entryPageSpread === birdLastAdvancedFromSpread) return;
-    const currentSpreadEnd = splitPoints[entryPageSpread * 2 + 1];
-    // ~15 chars of lookahead so the flip lands roughly when speech reaches the
-    // boundary, instead of starting ~750ms after speech has already crossed it.
-    if (currentSpreadEnd !== undefined && birdAbsoluteIndex > currentSpreadEnd - 15) {
-      birdLastAdvancedFromSpread = entryPageSpread;
-      birdInitiatedFlip = true;
-      onFlipNext();
-    }
-  };
-  u.onend = () => {
-    birdPhase = 'idle';
-    currentNarrationCharIndex = null;
-  };
-  u.onerror = () => {
-    birdPhase = 'idle';
-    currentNarrationCharIndex = null;
-  };
-  synth.speak(u);
-}
-
-function speakEntry() {
-  if (typeof window === 'undefined') return;
-  // Loading: cancel the in-flight request and stop, same as pressing stop.
-  if (birdPhase === 'loading') { stopBird(); return; }
-
-  if (birdPhase === 'playing') {
-    if (birdAudioEl) {
-      birdAudioEl.pause();
-    } else if (window.speechSynthesis) {
-      window.speechSynthesis.pause();
-    }
-    birdPhase = 'paused';
-    return;
-  }
-  if (birdPhase === 'paused') {
-    if (birdAudioEl) {
-      void birdAudioEl.play();
-    } else if (window.speechSynthesis) {
-      window.speechSynthesis.resume();
-    }
-    birdPhase = 'playing';
-    return;
-  }
-
-  if (!content?.trim()) return;
-  // Start reading from the current spread's first character, not the top of the entry.
-  const startOffset = entryPageSpread === 0 ? 0 : (splitPoints[entryPageSpread * 2 - 1] ?? 0);
-  birdLastAdvancedFromSpread = -1;
-  if (window.speechSynthesis) window.speechSynthesis.cancel();
-  cleanupTtsAudio();
-  void speakFromOffset(startOffset);
-}
-
-function setBirdRate(rate: number) {
-  const clamped = Math.max(0.2, Math.min(1.3, Math.round(rate * 100) / 100));
-  if (clamped === birdRate) return;
-  birdRate = clamped;
-  if (birdPhase !== 'playing' && birdPhase !== 'paused') return;
-  if (typeof window === 'undefined') return;
-  if (birdAudioEl) {
-    // TTS path: HTMLAudioElement supports live playbackRate changes.
-    birdAudioEl.playbackRate = clamped;
-    // Apply to buffered-but-not-yet-playing chunks too.
-    for (const item of birdAudioQueue) {
-      item.audioEl.playbackRate = clamped;
-    }
-  } else if (window.speechSynthesis) {
-    // Web Speech has no live rate setter — cancel and restart at new rate.
-    window.speechSynthesis.cancel();
-    void speakFromOffset(birdAbsoluteIndex);
-  }
-}
-
-function changeBirdRate(delta: number) {
-  setBirdRate(birdRate + delta);
+function handlePhaseChange(phase: BirdPhase) {
+  birdPhase = phase;
+  if (phase === 'idle') currentNarrationCharIndex = null;
 }
 
 function openSettings() {
@@ -995,147 +600,11 @@ let draftFontSizeCqw = $state(untrack(() => fontSizeCqw));
 let draftJournalFont = $state(untrack(() => journalFont as JournalFont));
 let draftPin = $state('');
 let draftConfirm = $state('');
-// Voice picker state.
-//
-// Kokoro voices (pre-selected for the picker from the 67 available) are loaded
-// once on mount via /api/speak/voices and merged above browser voices in the
-// select. The KOKORO_FEATURED_VOICES list matches the four voices the
-// practitioner tested; the picker shows only these four, in order.
-//
-// Browser voices (English only) are loaded from speechSynthesis and refreshed
-// on `voiceschanged` (Chrome loads them asynchronously on first paint).
-// We key by voiceURI because macOS ships duplicate `name`s (e.g. two "Daniel").
-type VoiceOption = {
-  uri: string;
-  name: string;
-  lang: string;
-  isDefault: boolean;
-  source: 'kokoro' | 'browser';
-};
-// Ordered list of featured Kokoro voices shown in the picker.
-const KOKORO_FEATURED_VOICES = ['bf_emma', 'am_echo', 'af_bella', 'bm_daniel'] as const;
-const KOKORO_VOICE_LABELS: Record<string, string> = {
-  bf_emma: 'Emma (British)',
-  am_echo: 'Echo (American)',
-  af_bella: 'Bella (American)',
-  bm_daniel: 'Daniel (British)',
-};
-let browserVoiceOptions: VoiceOption[] = $state([]);
-let kokoroVoiceOptions: VoiceOption[] = $state([]);
-let voiceOptions: VoiceOption[] = $derived([...kokoroVoiceOptions, ...browserVoiceOptions]);
-let kokoroOffline = $state(false);
+// Voice picker draft — bound through <VoicePicker> in the settings spread.
+// Browser/Kokoro enumeration, the featured list, the preview button, and the
+// offline indicator all live inside the package; the layout only holds the
+// draft + applied URI for the save/cancel flow.
 let draftVoiceURI: string | null = $state(untrack(() => voiceURI));
-
-$effect(() => {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return;
-  const synth = window.speechSynthesis;
-  const refresh = () => {
-    const seen = new Set<string>();
-    const freshBrowserVoices: VoiceOption[] = synth
-      .getVoices()
-      .filter((v) => v.lang.toLowerCase().startsWith('en'))
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((v) => ({
-        uri: v.voiceURI,
-        name: v.name,
-        lang: v.lang,
-        isDefault: v.default,
-        source: 'browser' as const,
-      }))
-      .filter((v) => { if (seen.has(v.uri)) return false; seen.add(v.uri); return true; });
-    // Write once — never read browserVoiceOptions inside this effect.
-    browserVoiceOptions = freshBrowserVoices;
-    // Fall back to device default only when nothing has been saved or picked.
-    // untrack the read of draftVoiceURI so writing it doesn't re-trigger this effect.
-    if (!voiceURI && !untrack(() => draftVoiceURI) && freshBrowserVoices.length > 0) {
-      const fallback =
-        freshBrowserVoices.find((v) => v.isDefault) ?? freshBrowserVoices[0];
-      untrack(() => { draftVoiceURI = fallback.uri; });
-    }
-  };
-  refresh();
-  synth.addEventListener('voiceschanged', refresh);
-  return () => {
-    synth.removeEventListener('voiceschanged', refresh);
-  };
-});
-
-// Fetch Kokoro voices once on mount (async — doesn't block the browser voice load).
-$effect(() => {
-  if (typeof window === 'undefined') return;
-  fetch('/api/speak/voices')
-    .then(async (res) => {
-      if (!res.ok) {
-        kokoroOffline = true;
-        return;
-      }
-      const payload = await res.json();
-      const available = new Set(
-        (payload.voices ?? []).map((v: { id: string }) => v.id)
-      );
-      if (available.size === 0) {
-        kokoroOffline = true;
-        return;
-      }
-      kokoroVoiceOptions = KOKORO_FEATURED_VOICES.filter((id) =>
-        available.has(id)
-      ).map((id) => ({
-        uri: id,
-        name: KOKORO_VOICE_LABELS[id] ?? id,
-        lang: 'en',
-        isDefault: false,
-        source: 'kokoro' as const,
-      }));
-      kokoroOffline = kokoroVoiceOptions.length === 0;
-      // Kokoro is live — if the user has a browser voice selected, upgrade
-      // to the first Kokoro voice so the picker doesn't show a blank selection.
-      if (kokoroVoiceOptions.length > 0 && !isKokoroVoiceUri(untrack(() => draftVoiceURI))) {
-        untrack(() => { draftVoiceURI = kokoroVoiceOptions[0].uri; });
-      }
-    })
-    .catch(() => {
-      kokoroOffline = true;
-    });
-});
-
-function previewVoice() {
-  if (typeof window === 'undefined' || !draftVoiceURI) return;
-  // Kokoro voices are previewed via the TTS path (full round-trip). Browser
-  // voices are previewed via Web Speech directly.
-  if (isKokoroVoiceUri(draftVoiceURI)) {
-    // Short preview via the TTS shim — fire and forget.
-    // Read the first NDJSON chunk (response is now a stream).
-    fetch('/api/speak', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: 'Welcome to Edelmore.', voice: draftVoiceURI, speed: 1.0 }),
-    })
-      .then(async (res) => {
-        if (!res.ok) return;
-        const text = await res.text();
-        const firstLine = text.split('\n').find((l) => l.trim());
-        if (!firstLine) return;
-        let chunk: { audio?: string; format?: string };
-        try { chunk = JSON.parse(firstLine); } catch { return; }
-        if (!chunk.audio || !chunk.format) return;
-        const url = audioBlobUrlFromBase64(chunk.audio, chunk.format);
-        const audio = new Audio(url);
-        audio.onended = () => URL.revokeObjectURL(url);
-        void audio.play();
-      })
-      .catch(() => {
-        // Preview failure is silent — it's cosmetic.
-      });
-    return;
-  }
-  if (!window.speechSynthesis) return;
-  const synth = window.speechSynthesis;
-  synth.cancel();
-  const u = new SpeechSynthesisUtterance('Welcome to Edelmore.');
-  const picked = synth.getVoices().find((v) => v.voiceURI === draftVoiceURI);
-  if (picked) u.voice = picked;
-  synth.speak(u);
-}
 let settingsWarning = $state(false);
 let settingsWarningText = $state('You have unsaved changes.');
 let settingsBackArmed = $state(false);
@@ -1705,36 +1174,7 @@ $effect(() => {
 
 									<section>
 										<p class="text-[0.6rem] tracking-[0.22em] uppercase text-stone-400 mb-1">Reading Voice</p>
-										{#if kokoroVoiceOptions.length === 0 && browserVoiceOptions.length === 0}
-											<p class="text-[0.7rem] italic text-stone-400">No voices on this device yet.</p>
-										{:else}
-											<div class="flex items-center gap-2">
-												<select bind:value={draftVoiceURI} class="flex-1 bg-transparent border-b border-stone-300 text-ink-900 text-sm pb-1 outline-none focus:border-stone-500 transition-colors">
-													{#if kokoroVoiceOptions.length > 0}
-														{#each kokoroVoiceOptions as v (v.uri)}
-															<option value={v.uri}>{v.name}</option>
-														{/each}
-													{:else}
-														{#if draftVoiceURI && isKokoroVoiceUri(draftVoiceURI)}
-															<!-- Kokoro voice saved but server offline — show as selectable
-															     so it stays saved correctly; narration falls back to browser
-															     voices until Kokoro is reachable again. -->
-															<option value={draftVoiceURI}>
-																{KOKORO_VOICE_LABELS[draftVoiceURI] ?? draftVoiceURI}
-															</option>
-														{:else}
-															{#each browserVoiceOptions as v (v.uri)}
-																<option value={v.uri}>{v.name} ({v.lang})</option>
-															{/each}
-														{/if}
-													{/if}
-												</select>
-												<button type="button" onclick={previewVoice} aria-label="Preview voice" class="w-7 h-7 border border-stone-300 text-stone-500 text-sm leading-none hover:border-stone-500 hover:text-ornament-gold transition-colors flex items-center justify-center">▶</button>
-											</div>
-											{#if kokoroOffline && draftVoiceURI && isKokoroVoiceUri(draftVoiceURI)}
-												<p class="text-[0.6rem] italic text-stone-400 mt-1">Voice server is offline — narration will use browser voices until it's back.</p>
-											{/if}
-										{/if}
+										<VoicePicker value={draftVoiceURI} onChange={(uri) => { draftVoiceURI = uri; }} />
 									</section>
 
 									<section>
@@ -1918,24 +1358,18 @@ $effect(() => {
 									<img src="/edelweiss.svg" style="width: 100%; height: 100%; object-fit: contain" alt="" />
 								</button>
 								<div class="spell-bird-cluster" transition:fade={{ duration: 280 }}>
-									<button type="button" onclick={speakEntry} class="spell-bird" class:is-loading={birdPhase === 'loading'} class:is-playing={birdPhase === 'playing'} class:is-paused={birdPhase === 'paused'} aria-label={birdPhase === 'loading' ? 'Preparing narration…' : birdPhase === 'playing' ? 'Pause' : birdPhase === 'paused' ? 'Resume' : 'Listen'}>
-										<img src="/bird.svg" style="width: 100%; height: 100%; object-fit: contain" alt="" />
-										<span class="spell-bird-note" aria-hidden="true">♪</span>
-									</button>
-									{#if birdPhase !== 'idle'}
-										<button type="button" onclick={stopBird} class="spell-nest" aria-label="Stop reading">
-											<img src="/nest.svg" alt="" />
-										</button>
-									{/if}
-									<div class="spell-bird-speed" class:is-visible={birdPhase !== 'idle'}>
-										<button type="button" onclick={() => changeBirdRate(-0.2)} class="spell-bird-tortoise" aria-label="Slower" disabled={birdRate <= 0.2}>
-											<img src="/tortoise.png" alt="" />
-										</button>
-										<button type="button" onclick={() => setBirdRate(1.0)} class="spell-bird-rate-reset" aria-label="Reset speed" disabled={birdRate === 1.0}></button>
-										<button type="button" onclick={() => changeBirdRate(0.05)} class="spell-bird-hare" aria-label="Faster" disabled={birdRate >= 1.3}>
-											<img src="/hare.png" alt="" />
-										</button>
-									</div>
+									<BirdNarrator
+										bind:this={birdNarrator}
+										text={content}
+										voiceURI={voiceURI}
+										startOffset={birdStartOffset}
+										untilOffset={birdUntilOffset}
+										pageEndOffset={birdUntilOffset}
+										onWordHighlight={(idx) => { currentNarrationCharIndex = idx; }}
+										onPageBoundaryReached={handlePageBoundary}
+										onNarrationEnd={handleNarrationEnd}
+										onPhaseChange={handlePhaseChange}
+									/>
 								</div>
 								<div class="spell-quill" transition:fade={{ duration: 280 }}>
 									<MicQuill oninsert={handleTranscriptionInsert} onstart={handleRecordingStart} />
@@ -2441,8 +1875,7 @@ $effect(() => {
 
 	.spell-settings,
 	.spell-today,
-	.spell-entries,
-	.spell-bird {
+	.spell-entries {
 		position: relative;
 		background: transparent;
 		border: none;
@@ -2505,173 +1938,27 @@ $effect(() => {
 
 	.spell-settings:hover,
 	.spell-today:hover,
-	.spell-entries:hover,
-	.spell-bird:hover,
-	.spell-bird.is-playing,
-	.spell-bird.is-paused {
+	.spell-entries:hover {
 		opacity: 1;
 	}
 
-	.spell-bird-note {
-		position: absolute;
-		top: 0.6cqi;
-		right: 0.6cqi;
-		font-size: 3.2cqi;
-		line-height: 1;
-		color: #c8362d;
-		opacity: 0;
-		pointer-events: none;
-		transition: opacity 0.15s ease;
-	}
-	.spell-bird.is-playing .spell-bird-note {
-		opacity: 1;
-	}
-	.spell-bird.is-paused .spell-bird-note {
-		opacity: 0.35;
-	}
-
-	@keyframes bird-waiting {
-		0%, 100% { opacity: 0.65; }
-		50%       { opacity: 1;    }
-	}
-	.spell-bird.is-loading {
-		opacity: 1;
-		cursor: default;
-	}
-	.spell-bird.is-loading img {
-		animation: bird-waiting 0.9s ease-in-out infinite;
-	}
-	.spell-bird.is-loading::after { content: "soon…"; }
-
-	/* Bird + speed-control cluster. The cluster takes the same slot the bird
-	   used to take; the speed control floats below the bird as an overlay so
-	   it doesn't change the ribbon's layout. */
+	/* Bird cluster wrapper. The cluster takes the same slot the bird used to
+	   take; the BirdNarrator component (from @edelmore/narration) renders the
+	   bird, nest, and speed control inside this anchored container. */
 	.spell-bird-cluster {
 		position: relative;
 		width: var(--spell-icon-size);
 		height: var(--spell-icon-size);
 		flex-shrink: 0;
 	}
-	.spell-bird-cluster .spell-bird {
-		width: 100%;
-		height: 100%;
-	}
-	/* Nest of twigs — appears only while the bird is reading; tap to stop. */
-	.spell-nest {
-		position: absolute;
-		top: 50%;
-		left: 100%;
-		transform: translateY(-50%);
-		margin-left: 0.6cqi;
-		width: calc(var(--spell-icon-size) * 0.85);
-		height: calc(var(--spell-icon-size) * 0.85);
-		background: transparent;
-		border: none;
-		padding: 0;
-		cursor: pointer;
-		opacity: 0.75;
-		transition: opacity 0.15s ease;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		z-index: 41;
-	}
-	.spell-nest:hover,
-	.spell-nest:focus-visible {
-		opacity: 1;
-	}
-	.spell-nest img {
-		width: 100%;
-		height: 100%;
-		object-fit: contain;
-	}
-	.spell-bird-speed {
-		position: absolute;
-		top: calc(100% + 1.2cqi);
-		left: 50%;
-		transform: translateX(-50%);
-		display: flex;
-		align-items: flex-end;
-		justify-content: center;
-		gap: 1cqi;
-		padding: 0.4cqi 0.9cqi;
-		background: rgba(254, 252, 247, 0.96);
-		border: 1px solid #dfc9a4;
-		border-radius: 1.4cqi;
-		opacity: 0;
-		pointer-events: none;
-		transition: opacity 0.2s ease;
-		z-index: 40;
-	}
-	.spell-bird-speed.is-visible {
-		opacity: 1;
-		pointer-events: auto;
-	}
-	.spell-bird-tortoise,
-	.spell-bird-hare {
-		width: 2.4cqi;
-		height: 2.4cqi;
-		background: transparent;
-		border: none;
-		padding: 0;
-		cursor: pointer;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-	.spell-bird-tortoise img,
-	.spell-bird-hare img {
-		width: 100%;
-		height: 100%;
-		object-fit: contain;
-		object-position: center bottom;
-		opacity: 0.5;
-		transition: opacity 0.15s ease;
-	}
-	.spell-bird-tortoise:hover:not(:disabled) img,
-	.spell-bird-hare:hover:not(:disabled) img {
-		opacity: 1;
-	}
-	.spell-bird-tortoise:disabled,
-	.spell-bird-hare:disabled {
-		cursor: not-allowed;
-	}
-	.spell-bird-tortoise:disabled img,
-	.spell-bird-hare:disabled img {
-		opacity: 0.2;
-	}
-
-	.spell-bird-rate-reset {
-		align-self: center;
-		width: 0.7cqi;
-		height: 0.7cqi;
-		border-radius: 50%;
-		background: #4a3728;
-		border: none;
-		padding: 0;
-		cursor: pointer;
-		opacity: 0.45;
-		transition: opacity 0.15s ease;
-	}
-	.spell-bird-rate-reset:hover:not(:disabled) {
-		opacity: 1;
-	}
-	.spell-bird-rate-reset:disabled {
-		cursor: default;
-		opacity: 0.2;
-	}
 
 	/* ── Ribbon tooltips ─────────────────────────────────────────────────── */
 	.spell-quill::after    { content: "speak"; }
-	.spell-bird::after     { content: "listen"; }
-	.spell-nest::after     { content: "stop"; }
 	.spell-today::after    { content: "today"; }
 	.spell-entries::after  { content: "recent entries"; }
 	.spell-settings::after { content: "settings"; }
 
 	.spell-quill::after,
-	.spell-bird::after,
-	.spell-nest::after,
 	.spell-today::after,
 	.spell-entries::after,
 	.spell-settings::after {
@@ -2695,10 +1982,6 @@ $effect(() => {
 
 	.spell-quill:hover::after,
 	.spell-quill:focus-within::after,
-	.spell-bird:hover::after,
-	.spell-bird:focus-visible::after,
-	.spell-nest:hover::after,
-	.spell-nest:focus-visible::after,
 	.spell-today:hover::after,
 	.spell-today:focus-visible::after,
 	.spell-entries:hover::after,

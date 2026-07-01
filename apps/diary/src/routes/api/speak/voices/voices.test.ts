@@ -1,16 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Mock $env/dynamic/private before importing the handler.
-vi.mock('$env/dynamic/private', () => ({
-  env: {
-    TTS_URL: 'http://kokoro.test/dev/captioned_speech',
-    TTS_VOICES_URL: 'http://kokoro.test/v1/audio/voices',
-    TTS_API_KEY: '',
-  } as Record<string, string | undefined>,
-}));
+// Mock $env/dynamic/private; the env object lives in vi.hoisted so it
+// survives vi.resetModules() (used to rebuild the factory closure when env
+// changes between tests).
+const env = vi.hoisted(
+  () =>
+    ({
+      TTS_URL: 'http://kokoro.test/dev/captioned_speech',
+      TTS_VOICES_URL: 'http://kokoro.test/v1/audio/voices',
+      TTS_API_KEY: '',
+    }) as Record<string, string | undefined>
+);
 
-const env = (await import('$env/dynamic/private')).env as Record<string, string | undefined>;
-const { GET } = await import('./+server.js');
+vi.mock('$env/dynamic/private', () => ({ env }));
+
+type ShimModule = typeof import('./+server.js');
+let GET: ShimModule['GET'];
+
+async function loadShim(): Promise<void> {
+  vi.resetModules();
+  GET = (await import('./+server.js')).GET;
+}
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -27,20 +37,21 @@ function makeAuthedEvent() {
         diary_title: 'Diary',
       },
     },
-  } as Parameters<typeof GET>[0];
+  } as Parameters<ShimModule['GET']>[0];
 }
 
 function makeUnauthEvent() {
   return {
     request: new Request('http://localhost/api/speak/voices'),
     locals: {},
-  } as Parameters<typeof GET>[0];
+  } as Parameters<ShimModule['GET']>[0];
 }
 
 const originalFetch = globalThis.fetch;
 
 describe('GET /api/speak/voices', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await loadShim();
     globalThis.fetch = vi.fn();
   });
   afterEach(() => {
@@ -93,6 +104,8 @@ describe('GET /api/speak/voices', () => {
   it('derives the voices URL from TTS_URL when TTS_VOICES_URL is unset', async () => {
     const saved = env.TTS_VOICES_URL;
     env.TTS_VOICES_URL = undefined;
+    await loadShim();
+    (globalThis.fetch as ReturnType<typeof vi.fn>) = vi.fn();
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       new Response(JSON.stringify({ voices: [{ id: 'af_bella', name: 'af_bella' }] }), {
         status: 200,
@@ -112,6 +125,8 @@ describe('GET /api/speak/voices', () => {
     const savedTts = env.TTS_URL;
     env.TTS_VOICES_URL = undefined;
     env.TTS_URL = undefined;
+    await loadShim();
+    globalThis.fetch = vi.fn();
     try {
       const response = await GET(makeAuthedEvent());
       expect(response.status).toBe(200);
@@ -126,6 +141,8 @@ describe('GET /api/speak/voices', () => {
   it('sends a bearer token when TTS_API_KEY is set', async () => {
     const saved = env.TTS_API_KEY;
     env.TTS_API_KEY = 'secret-token';
+    await loadShim();
+    globalThis.fetch = vi.fn();
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       new Response(JSON.stringify({ voices: [] }), { status: 200 })
     );
