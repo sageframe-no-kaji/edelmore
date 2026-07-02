@@ -1,5 +1,5 @@
+import { audioBlobUrlFromBase64, isKokoroVoiceUri } from '@edelmore/narration';
 import { describe, expect, it } from 'vitest';
-import { audioBlobUrlFromBase64, isKokoroVoiceUri } from './narration.js';
 
 describe('isKokoroVoiceUri', () => {
   it('returns true for Kokoro voice slugs', () => {

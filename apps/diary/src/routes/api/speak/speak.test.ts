@@ -1,17 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Mock $env/dynamic/private before importing the handler. The object is mutable
-// so individual tests can toggle config (e.g. unset TTS_URL, configure Docker).
-vi.mock('$env/dynamic/private', () => ({
-  env: {
-    TTS_URL: 'http://kokoro.test/dev/captioned_speech',
-    TTS_VOICES_URL: 'http://kokoro.test/v1/audio/voices',
-    TTS_API_KEY: '',
-  } as Record<string, string | undefined>,
-}));
+// Mock $env/dynamic/private so the shim's import resolves in tests. The env
+// object lives in vi.hoisted so it survives vi.resetModules() — each describe
+// mutates env then re-imports the shim, and the SAME env reference is returned
+// by the mock factory (otherwise we'd lose mutations across module resets).
+const env = vi.hoisted(
+  () =>
+    ({
+      TTS_URL: 'http://kokoro.test/dev/captioned_speech',
+      TTS_VOICES_URL: 'http://kokoro.test/v1/audio/voices',
+      TTS_API_KEY: '',
+    }) as Record<string, string | undefined>
+);
 
-const env = (await import('$env/dynamic/private')).env as Record<string, string | undefined>;
-const { POST } = await import('./+server.js');
+vi.mock('$env/dynamic/private', () => ({ env }));
+
+// The shim re-imports happen inside each beforeEach so the factory closure
+// captures the env values active for that describe block.
+type ShimModule = typeof import('./+server.js');
+let POST: ShimModule['POST'];
+
+async function loadShim(): Promise<void> {
+  vi.resetModules();
+  POST = (await import('./+server.js')).POST;
+}
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -32,7 +44,7 @@ function makeAuthedEvent(body: unknown) {
         diary_title: 'Diary',
       },
     },
-  } as Parameters<typeof POST>[0];
+  } as Parameters<ShimModule['POST']>[0];
 }
 
 function makeUnauthEvent(body: unknown) {
@@ -43,7 +55,7 @@ function makeUnauthEvent(body: unknown) {
       body: JSON.stringify(body),
     }),
     locals: {},
-  } as Parameters<typeof POST>[0];
+  } as Parameters<ShimModule['POST']>[0];
 }
 
 /** One upstream chunk in Kokoro's NDJSON streaming format. */
@@ -85,7 +97,8 @@ async function readNdjson(response: Response): Promise<unknown[]> {
 const originalFetch = globalThis.fetch;
 
 describe('POST /api/speak', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await loadShim();
     globalThis.fetch = vi.fn();
   });
   afterEach(() => {
@@ -224,6 +237,7 @@ describe('POST /api/speak', () => {
   it('returns 503 when TTS_URL is not configured', async () => {
     const saved = env.TTS_URL;
     env.TTS_URL = '';
+    await loadShim();
     try {
       await expect(
         POST(makeAuthedEvent({ text: 'hello', voice: 'af_bella', speed: 1.0 }))
@@ -374,11 +388,12 @@ describe('POST /api/speak — on-demand Kokoro', () => {
   const dockerUrl = 'http://docker.test:2376';
   const containerName = 'svc-kokoro';
 
-  beforeEach(() => {
-    globalThis.fetch = vi.fn();
+  beforeEach(async () => {
     env.DOCKER_API_URL = dockerUrl;
     env.KOKORO_CONTAINER_NAME = containerName;
     env.KOKORO_IDLE_MINUTES = '5';
+    await loadShim();
+    globalThis.fetch = vi.fn();
     vi.useFakeTimers();
   });
   afterEach(() => {
@@ -472,17 +487,18 @@ describe('POST /api/speak — on-demand Kokoro', () => {
 
 // ── Fork path: TTS_UNLOAD_URL configured ──────────────────────────────────────
 //
-// When TTS_UNLOAD_URL is set the shim uses /dev/unload instead of the Docker
-// remote API: ensureKokoroRunning becomes a no-op (model reloads lazily) and
-// stopKokoro POSTs to the unload endpoint.
+// When TTS_UNLOAD_URL is set the factory uses /dev/unload instead of the
+// Docker remote API: ensureKokoroRunning becomes a no-op (model reloads
+// lazily) and stopKokoro POSTs to the unload endpoint.
 
 describe('POST /api/speak — TTS_UNLOAD_URL fork path', () => {
   const unloadUrl = 'http://shingan.test:8880/dev/unload';
 
-  beforeEach(() => {
-    globalThis.fetch = vi.fn();
+  beforeEach(async () => {
     env.TTS_UNLOAD_URL = unloadUrl;
     env.KOKORO_IDLE_MINUTES = '5';
+    await loadShim();
+    globalThis.fetch = vi.fn();
     vi.useFakeTimers();
   });
   afterEach(() => {

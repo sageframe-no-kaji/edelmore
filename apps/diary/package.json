@@ -40,6 +40,7 @@
   "dependencies": {
     "@edelmore/book": "*",
     "@edelmore/design": "*",
+    "@edelmore/narration": "*",
     "argon2": "^0.41.0",
     "better-sqlite3": "^11.0.0"
   }

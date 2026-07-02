@@ -1,0 +1,22 @@
+{
+  "name": "@edelmore/narration",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Edelmore narration wire adapter — Kokoro TTS handler factories and normalized stream types. Shared across apps/diary and apps/reader. Client-side narration UI (bird, ribbon, pickers) lives per-app.",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./narration": "./narration.ts",
+    "./api/speak": "./api/speak.ts",
+    "./api/voices": "./api/voices.ts"
+  },
+  "files": [
+    "index.ts",
+    "narration.ts",
+    "api/speak.ts",
+    "api/voices.ts"
+  ],
+  "peerDependencies": {
+    "@sveltejs/kit": "^2.0.0"
+  }
+}
