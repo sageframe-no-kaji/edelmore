@@ -38,6 +38,8 @@ Per-app. See `apps/diary/CLAUDE.md → Deployment` for the diary's build-on-host
 
 ## Project documents & ho discipline
 
+**For a bird's-eye view of where each chain sits right now, read `HO-STATUS.md` at repo root.** That file is the signpost — shipped / open / filed / next-move — updated when a ho changes state.
+
 Kamae chains are **per-app**. Each app has its own chain in `apps/<app>/ho-process/` (gitignored — private practitioner work):
 
 - `apps/diary/ho-process/` — diary chain (seed, system design, ho outline, per-ho docs). v1.0 shipped; post-v1.0 hos append to the outline.
