@@ -128,101 +128,116 @@ export async function flip(
   // guard at the top otherwise let a second flip start concurrently
   // (double-click = double navigation + overlapping clone animations).
   isFlipping = true;
-  if (direction === 'forward') {
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
 
-  // Snapshot the OLD turning page (front face) and OLD opposite-side page
-  // (static overlay) — both BEFORE mutation, so they hold the OLD content.
-  const frontFace = makeFace(oldFront, false);
-  const oppositeOverlay = oldOpposite
-    ? (() => {
-        const clone = oldOpposite.cloneNode(true) as HTMLElement;
-        clone.style.position = 'absolute';
-        clone.style.top = '0';
-        clone.style.width = '50%';
-        clone.style.height = '100%';
-        clone.style.left = oppositeDirection === 'backward' ? '0' : '50%';
-        clone.style.margin = '0';
-        clone.style.pointerEvents = 'none';
-        clone.style.zIndex = '45';
-        clone.style.filter = 'none';
-        clone.style.boxShadow = 'none';
-        clone.style.clipPath = 'none';
-        clone.style.visibility = 'visible';
-        return clone;
-      })()
-    : null;
+  // Cleanup handles for the finally block. mutate() can reject (e.g. a
+  // failed routed navigation) at any point after the flag is claimed, so
+  // each handle is assigned as its resource is created and released
+  // unconditionally below — otherwise a single rejection leaves isFlipping
+  // latched true and clones/flip-hidden stranded in the DOM.
+  let wrapperEl: HTMLDivElement | null = null;
+  let oppositeOverlay: HTMLElement | null = null;
+  let unsubscribe: (() => void) | null = null;
 
-  // Build the rotating wrapper with the front face. Back face is added
-  // after mutation. The wrapper at rotateY(0deg) sits on the same-side
-  // half showing the OLD turning page content. All positioning is inline
-  // (not via CSS classes) so there's zero risk of cascade/specificity
-  // putting the wrapper on the wrong half.
-  const wrapper = document.createElement('div');
-  wrapper.style.position = 'absolute';
-  wrapper.style.top = '0';
-  wrapper.style.width = '50%';
-  wrapper.style.height = '100%';
-  wrapper.style.left = direction === 'forward' ? '50%' : '0';
-  wrapper.style.transformOrigin = direction === 'forward' ? 'left center' : 'right center';
-  wrapper.style.transformStyle = 'preserve-3d';
-  wrapper.style.willChange = 'transform';
-  wrapper.style.zIndex = '50';
-  wrapper.style.pointerEvents = 'none';
-  wrapper.style.transform = 'rotateY(0deg)';
-  wrapper.appendChild(frontFace);
-
-  // CRITICAL: insert overlay + wrapper BEFORE awaiting mutate. Once we
-  // await, the browser can paint, and live pages will have updated to NEW
-  // content under us. The OLD-content overlay must be in place by then.
-  // Hide both live pages via the flip-hidden class so neither's NEW content
-  // can peek out from under the rotating wrapper (same-side, where the
-  // wrapper foreshortens) or from clip-path bump mismatches with the
-  // overlay (opposite-side).
-  if (oppositeOverlay) bookShellEl.appendChild(oppositeOverlay);
-  bookShellEl.appendChild(wrapper);
-  const livePages = { same: oldFront, opposite: oldOpposite };
-  livePages.same.classList.add('flip-hidden');
-  livePages.opposite?.classList.add('flip-hidden');
-
-  // Run the mutation (sync state change, or async routed navigation).
-  await Promise.resolve(mutate());
-  await tick();
-
-  // Tween the rotation. backFace is NOT appended yet — we add it at the
-  // 90° midpoint and remove the frontFace then too. This avoids relying
-  // on backface-visibility:hidden, which doesn't always work reliably in
-  // nested 3D contexts (without it, the back face's rotateY(180°) shows
-  // its NEW content MIRRORED during 0-90°, visible behind the front face).
-  // Each face is only in the DOM during the half-rotation it should be
-  // visible in.
-  let crossedMidpoint = false;
-  flipAngle.set(0, { duration: 0 });
-  const unsubscribe = flipAngle.subscribe((angle) => {
-    wrapper.style.transform = `rotateY(${angle}deg)`;
-    if (!crossedMidpoint && Math.abs(angle) >= 90) {
-      crossedMidpoint = true;
-      // Swap front face out, back face in. Wrapper at 90° is edge-on, so
-      // the swap happens during its invisible moment.
-      frontFace.remove();
-      const newBack = getLivePage(oppositeDirection);
-      if (newBack) wrapper.appendChild(makeFace(newBack, true));
-      livePages.same.classList.remove('flip-hidden');
-      livePages.opposite?.classList.remove('flip-hidden');
-      if (oppositeOverlay?.parentNode) oppositeOverlay.remove();
+  try {
+    if (direction === 'forward') {
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
-  });
-  const target = direction === 'forward' ? -180 : 180;
-  await flipAngle.set(target);
 
-  // Cleanup.
-  unsubscribe();
-  wrapper.remove();
-  if (oppositeOverlay?.parentNode) oppositeOverlay.remove();
-  livePages.same.classList.remove('flip-hidden');
-  livePages.opposite?.classList.remove('flip-hidden');
-  isFlipping = false;
+    // Snapshot the OLD turning page (front face) and OLD opposite-side page
+    // (static overlay) — both BEFORE mutation, so they hold the OLD content.
+    const frontFace = makeFace(oldFront, false);
+    oppositeOverlay = oldOpposite
+      ? (() => {
+          const clone = oldOpposite.cloneNode(true) as HTMLElement;
+          clone.style.position = 'absolute';
+          clone.style.top = '0';
+          clone.style.width = '50%';
+          clone.style.height = '100%';
+          clone.style.left = oppositeDirection === 'backward' ? '0' : '50%';
+          clone.style.margin = '0';
+          clone.style.pointerEvents = 'none';
+          clone.style.zIndex = '45';
+          clone.style.filter = 'none';
+          clone.style.boxShadow = 'none';
+          clone.style.clipPath = 'none';
+          clone.style.visibility = 'visible';
+          return clone;
+        })()
+      : null;
+
+    // Build the rotating wrapper with the front face. Back face is added
+    // after mutation. The wrapper at rotateY(0deg) sits on the same-side
+    // half showing the OLD turning page content. All positioning is inline
+    // (not via CSS classes) so there's zero risk of cascade/specificity
+    // putting the wrapper on the wrong half.
+    const wrapper = document.createElement('div');
+    wrapperEl = wrapper;
+    wrapper.style.position = 'absolute';
+    wrapper.style.top = '0';
+    wrapper.style.width = '50%';
+    wrapper.style.height = '100%';
+    wrapper.style.left = direction === 'forward' ? '50%' : '0';
+    wrapper.style.transformOrigin = direction === 'forward' ? 'left center' : 'right center';
+    wrapper.style.transformStyle = 'preserve-3d';
+    wrapper.style.willChange = 'transform';
+    wrapper.style.zIndex = '50';
+    wrapper.style.pointerEvents = 'none';
+    wrapper.style.transform = 'rotateY(0deg)';
+    wrapper.appendChild(frontFace);
+
+    // CRITICAL: insert overlay + wrapper BEFORE awaiting mutate. Once we
+    // await, the browser can paint, and live pages will have updated to NEW
+    // content under us. The OLD-content overlay must be in place by then.
+    // Hide both live pages via the flip-hidden class so neither's NEW content
+    // can peek out from under the rotating wrapper (same-side, where the
+    // wrapper foreshortens) or from clip-path bump mismatches with the
+    // overlay (opposite-side).
+    if (oppositeOverlay) bookShellEl.appendChild(oppositeOverlay);
+    bookShellEl.appendChild(wrapper);
+    const livePages = { same: oldFront, opposite: oldOpposite };
+    livePages.same.classList.add('flip-hidden');
+    livePages.opposite?.classList.add('flip-hidden');
+
+    // Run the mutation (sync state change, or async routed navigation).
+    // A rejection propagates to the caller; the finally below cleans up.
+    await Promise.resolve(mutate());
+    await tick();
+
+    // Tween the rotation. backFace is NOT appended yet — we add it at the
+    // 90° midpoint and remove the frontFace then too. This avoids relying
+    // on backface-visibility:hidden, which doesn't always work reliably in
+    // nested 3D contexts (without it, the back face's rotateY(180°) shows
+    // its NEW content MIRRORED during 0-90°, visible behind the front face).
+    // Each face is only in the DOM during the half-rotation it should be
+    // visible in.
+    let crossedMidpoint = false;
+    flipAngle.set(0, { duration: 0 });
+    unsubscribe = flipAngle.subscribe((angle) => {
+      wrapper.style.transform = `rotateY(${angle}deg)`;
+      if (!crossedMidpoint && Math.abs(angle) >= 90) {
+        crossedMidpoint = true;
+        // Swap front face out, back face in. Wrapper at 90° is edge-on, so
+        // the swap happens during its invisible moment.
+        frontFace.remove();
+        const newBack = getLivePage(oppositeDirection);
+        if (newBack) wrapper.appendChild(makeFace(newBack, true));
+        livePages.same.classList.remove('flip-hidden');
+        livePages.opposite?.classList.remove('flip-hidden');
+        if (oppositeOverlay?.parentNode) oppositeOverlay.remove();
+      }
+    });
+    const target = direction === 'forward' ? -180 : 180;
+    await flipAngle.set(target);
+  } finally {
+    // Cleanup — unconditional, success and failure alike. Every operation
+    // is a no-op when its resource was never created/added.
+    unsubscribe?.();
+    wrapperEl?.remove();
+    if (oppositeOverlay?.parentNode) oppositeOverlay.remove();
+    oldFront.classList.remove('flip-hidden');
+    oldOpposite?.classList.remove('flip-hidden');
+    isFlipping = false;
+  }
 }
 </script>
 
