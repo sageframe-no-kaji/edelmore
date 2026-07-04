@@ -92,10 +92,6 @@ function makeFace(source: HTMLElement, isBack: boolean): HTMLElement {
   clone.style.boxShadow = 'none';
   clone.style.clipPath = 'none';
   clone.style.visibility = 'visible';
-  // The clone inherits `.page-left`/`.page-right`, hence their
-  // `view-transition-name`. Two elements sharing a name make the browser skip
-  // the transition, so strip it here — the clone is never a VT surface.
-  clone.style.setProperty('view-transition-name', 'none');
   if (isBack) clone.style.transform = 'rotateY(180deg)';
   return clone;
 }
@@ -116,6 +112,42 @@ export async function flip(
     await mutate();
     return;
   }
+
+  // View Transitions path (Decision 1 / Decision 9). When the browser supports
+  // it, hand the page turn to startViewTransition: it snapshots the live DOM,
+  // runs mutate(), and animates OLD → NEW. No clones, no rotating wrapper, no
+  // flip-hidden — each page keeps its parent-CSS context because the browser
+  // captures it in place, which is what dissolves the clone-out-of-context
+  // artifact family. The visible animation is the browser's default crossfade
+  // for now; Phase C styles the ::view-transition pseudo-elements into the 3D
+  // book turn.
+  if (
+    typeof document !== 'undefined' &&
+    typeof document.startViewTransition === 'function'
+  ) {
+    // AT-02 / Decision 11: the try/finally invariant is preserved on this
+    // branch too. isFlipping is released whether the transition completes or
+    // mutate() rejects, and the transition owns its own pseudo-elements — there
+    // is nothing for us to strand, so cleanup is just the flag.
+    isFlipping = true;
+    try {
+      const transition = document.startViewTransition(() =>
+        Promise.resolve(mutate())
+      );
+      // finished rejects iff mutate() rejects (surfacing to the caller, AT-02);
+      // otherwise it resolves when the animation ends, holding isFlipping for
+      // the whole turn.
+      await transition.finished;
+    } finally {
+      isFlipping = false;
+    }
+    return;
+  }
+
+  // No View Transitions support: fall through to the clone-rotate path below,
+  // unchanged. (Phase E replaces this fallback with a plain `await mutate()`
+  // per Decision 9; until then the legacy animation stays as the fallback.)
+
   // Front face = OLD page being turned (forward = right; backward = left).
   // Opposite = the OLD page on the other side, which stays visible during
   // the first half of the flip (so the user sees the OLD spread until the
@@ -165,7 +197,6 @@ export async function flip(
           clone.style.boxShadow = 'none';
           clone.style.clipPath = 'none';
           clone.style.visibility = 'visible';
-          clone.style.setProperty('view-transition-name', 'none');
           return clone;
         })()
       : null;
@@ -205,28 +236,7 @@ export async function flip(
 
     // Run the mutation (sync state change, or async routed navigation).
     // A rejection propagates to the caller; the finally below cleans up.
-    //
-    // Phase A2 (diagnostic): where View Transitions exist, run the mutation
-    // inside startViewTransition so a browser transition fires *behind* the
-    // clone-rotate (both mechanisms run; the custom rotation stays visible).
-    // We await updateCallbackDone — the mutation's completion — not finished,
-    // so the clone rotation still starts as soon as the DOM has updated. Phase
-    // B replaces this dual path with a VT-only branch.
-    if (
-      typeof document !== 'undefined' &&
-      typeof document.startViewTransition === 'function'
-    ) {
-      const transition = document.startViewTransition(() =>
-        Promise.resolve(mutate())
-      );
-      // finished mirrors a mutate() rejection; observe it so a failure isn't an
-      // unhandled rejection. updateCallbackDone carries that rejection to the
-      // finally below (and to the caller — AT-02).
-      transition.finished.catch(() => {});
-      await transition.updateCallbackDone;
-    } else {
-      await Promise.resolve(mutate());
-    }
+    await Promise.resolve(mutate());
     await tick();
 
     // Tween the rotation. backFace is NOT appended yet — we add it at the
