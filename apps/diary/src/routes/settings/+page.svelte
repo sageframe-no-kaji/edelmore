@@ -1,5 +1,6 @@
 <script lang="ts">
 import { enhance } from '$app/forms';
+import type { SubmitFunction } from '@sveltejs/kit';
 import { untrack } from 'svelte';
 import type { PageData } from './$types';
 
@@ -22,12 +23,26 @@ function snapIndex(size: number): number {
   return bestIdx;
 }
 
-// Optimistic local state — initialized once from server, updated on each step click.
-// biome-ignore lint/style/useConst: mutated via onsubmit handlers in template
+// Local mirror of the persisted size — initialized once from server, updated
+// only when the save action reports success, so a failed save leaves the
+// stepper showing the value the server still holds.
+// biome-ignore lint/style/useConst: mutated in the enhance success callback
 let currentSize = $state(untrack(() => data.font_size));
 const currentIndex = $derived(snapIndex(currentSize));
 const prevSize = $derived(FONT_STEPS[currentIndex - 1] ?? null);
 const nextSize = $derived(FONT_STEPS[currentIndex + 1] ?? null);
+
+// enhance submit handler for the two stepper forms: capture the intended size
+// at submit time, commit it locally only on action success.
+function stepSubmit(target: () => number | null): SubmitFunction {
+  return () => {
+    const intended = target();
+    return async ({ result, update }) => {
+      if (intended !== null && result.type === 'success') currentSize = intended;
+      await update();
+    };
+  };
+}
 </script>
 
 <div class="settings-shell">
@@ -81,14 +96,14 @@ const nextSize = $derived(FONT_STEPS[currentIndex + 1] ?? null);
     <section class="card">
       <h2 class="card-title">Text size</h2>
       <div class="size-row">
-        <form method="POST" action="?/updateFontSize" use:enhance onsubmit={() => { if (prevSize) currentSize = prevSize; }}>
+        <form method="POST" action="?/updateFontSize" use:enhance={stepSubmit(() => prevSize)}>
           <input type="hidden" name="font_size" value={prevSize ?? currentSize} />
           <button type="submit" class="step-btn" disabled={prevSize === null} aria-label="Decrease text size">−</button>
         </form>
         <span class="size-label">
           {currentIndex + 1} / {FONT_STEPS.length}
         </span>
-        <form method="POST" action="?/updateFontSize" use:enhance onsubmit={() => { if (nextSize) currentSize = nextSize; }}>
+        <form method="POST" action="?/updateFontSize" use:enhance={stepSubmit(() => nextSize)}>
           <input type="hidden" name="font_size" value={nextSize ?? currentSize} />
           <button type="submit" class="step-btn" disabled={nextSize === null} aria-label="Increase text size">+</button>
         </form>

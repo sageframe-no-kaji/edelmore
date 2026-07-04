@@ -22,6 +22,7 @@ const { data, form }: { data: PageData; form: ActionData } = $props();
 					inputmode="numeric"
 					maxlength="8"
 					autocomplete="off"
+					aria-label="Admin PIN"
 					class="w-full rounded-sm border border-cream-300 bg-cream-50 px-3 py-2 text-center font-mono text-xl tracking-widest text-ink-900 focus:border-ornament-gold focus:outline-none"
 				/>
 				{#if form?.error}
