@@ -18,7 +18,6 @@ import {
   makeEntryPreview,
   updateJournalFont,
   updateSessionExpiry,
-  updateUserCoverId,
   upsertEntry,
 } from './db.js';
 
@@ -38,6 +37,19 @@ describe('createDb / applySchema', () => {
   it('is idempotent — calling applySchema twice does not throw', () => {
     const db = freshDb();
     expect(() => applySchema(db)).not.toThrow();
+  });
+
+  it('rethrows migration errors that are not "duplicate column name"', () => {
+    // A migration that fails for a real reason (disk error, corrupt schema, …)
+    // must propagate instead of being swallowed as "column already exists".
+    const real = freshDb();
+    const failing = {
+      exec(sql: string) {
+        if (sql.startsWith('ALTER TABLE')) throw new Error('SQLITE_IOERR: disk I/O error');
+        return real.exec(sql);
+      },
+    } as unknown as Database;
+    expect(() => applySchema(failing)).toThrow(/disk I\/O error/);
   });
 
   it('enforces foreign keys (OFF by SQLite default)', () => {
@@ -126,25 +138,11 @@ describe('user operations', () => {
     expect(listUsers(db)).toEqual([]);
   });
 
-  it('updateUserCoverId updates the cover_id for the given user', () => {
-    const id = createUser(db, 'Iona', 'hash1');
-    updateUserCoverId(db, id, 'sage');
-    const user = getUserById(db, id);
-    expect(user?.cover_id).toBe('sage');
-  });
-
   it('updateJournalFont updates the journal_font for the given user', () => {
     const id = createUser(db, 'Iona', 'hash1');
     updateJournalFont(db, id, 'cedarville-cursive');
     const user = getUserById(db, id);
     expect(user?.journal_font).toBe('cedarville-cursive');
-  });
-
-  it('updateUserCoverId does not affect other users', () => {
-    const id1 = createUser(db, 'Iona', 'hash1');
-    const id2 = createUser(db, 'Isla', 'hash2');
-    updateUserCoverId(db, id1, 'dusty-rose');
-    expect(getUserById(db, id2)?.cover_id).toBe('meadow');
   });
 });
 

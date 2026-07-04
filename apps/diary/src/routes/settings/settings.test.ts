@@ -162,6 +162,37 @@ describe('actions.saveSettings', () => {
     expect(after.pin_hash).toBe(before.pin_hash);
   });
 
+  it('commits nothing when a mid-sequence write fails (atomic save)', async () => {
+    // Inject a failure on the journal_font write — the fourth in the sequence —
+    // via a trigger. The earlier username/title/size writes must roll back.
+    db.exec(
+      `CREATE TRIGGER inject_failure BEFORE UPDATE OF journal_font ON users
+       BEGIN SELECT RAISE(ABORT, 'injected failure'); END`
+    );
+
+    const result = await actions.saveSettings({
+      request: {
+        formData: async () =>
+          makeFormData({
+            username: 'Nova',
+            diary_title: 'Moon Notes',
+            font_size: '4.4',
+            journal_font: 'cedarville-cursive',
+            pin: '',
+            confirm: '',
+          }),
+      },
+      locals: { db, user: defaultUser(userId) },
+    } as any);
+
+    expect(result?.status).toBe(400);
+    expect(getUserById(db, userId)).toMatchObject({
+      username: 'Iona',
+      diary_title: 'D I A R Y',
+      font_size: 4.0,
+    });
+  });
+
   it('returns 400 for a username longer than 40 chars', async () => {
     const result = await actions.saveSettings({
       request: {

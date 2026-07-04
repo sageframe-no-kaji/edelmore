@@ -1,7 +1,6 @@
 import { SESSION_COOKIE, SESSION_DURATION_SECONDS, sessionExpiry } from '$lib/auth.js';
 import { createDb, deleteExpiredSessions } from '$lib/db.js';
 import { getSession, getUserById, updateSessionExpiry } from '$lib/db.js';
-import { seedIfEmpty } from '$lib/seed.js';
 import type { Handle } from '@sveltejs/kit';
 import type { Database } from 'better-sqlite3';
 
@@ -36,17 +35,12 @@ export function createHandle(db: Database): Handle {
 
 // Production singleton — only path not exercised by unit tests.
 let _db: Database | null = null;
-let _seeded = false;
 
-/* v8 ignore next 11 — singleton init runs once at server startup, not in unit tests */
+/* v8 ignore next 7 — singleton init runs once at server startup, not in unit tests */
 async function getDb(): Promise<Database> {
   if (!_db) {
     _db = createDb(process.env.DATABASE_URL ?? 'data/edelmore.db');
-  }
-  if (!_seeded) {
-    seedIfEmpty(_db);
     deleteExpiredSessions(_db);
-    _seeded = true;
   }
   return _db;
 }
