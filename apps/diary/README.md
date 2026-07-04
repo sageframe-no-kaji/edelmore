@@ -43,7 +43,7 @@ Edelmore is closest in spirit to Day One but inverts its choices: local rather t
 
 - **Frontend + backend.** A single SvelteKit application (`adapter-node`). Server endpoints handle auth, autosave, transcription routing, and narration routing.
 - **Storage.** SQLite, one file. Three tables: `users`, `entries` (one per user per day), `sessions`.
-- **Page-turn animation.** StPageFlip, wrapped in a Svelte action.
+- **Page-turn animation.** Custom CSS 3D clone-rotate flip via `packages/book/BookShell.svelte` (StPageFlip was evaluated and rejected during ho-03 — see system design).
 - **Transcription (optional).** A separate Whisper service on the network, called over HTTP via `/api/transcribe`. Audio captured via the browser's MediaRecorder, posted as webm/opus, returned as text. Not bundled in the image.
 - **Read-aloud (optional).** A separate Kokoro TTS service, called via `/api/speak`. The server proxies requests to `/dev/captioned_speech` with `stream=true`, so the first audio chunk arrives in ~2 seconds regardless of entry length; words are highlighted continuously as they're spoken. The shim can unload the GPU model after an idle timeout (via `TTS_UNLOAD_URL` on the [sageframe-no-kaji/Kokoro-FastAPI](https://github.com/sageframe-no-kaji/Kokoro-FastAPI) fork, which reloads lazily on the next request) or stop the container via the Docker remote API. Not bundled in the image.
 - **Network.** Caddy reverse-proxy on the homelab. Tailscale MagicDNS extends the same hostname to phones and tablets outside the house. LAN-only devices (such as a Chromebook without Tailscale) work when at home.
@@ -54,7 +54,7 @@ Edelmore is closest in spirit to Day One but inverts its choices: local rather t
 - SvelteKit (TypeScript, Svelte 5 runes), `adapter-node`
 - SQLite via `better-sqlite3`
 - Tailwind CSS v4
-- StPageFlip
+- `@edelmore/book` (custom CSS 3D clone-rotate flip)
 - argon2id for PIN hashing
 - WhisperX (separate, optional service) for transcription
 - Kokoro TTS (separate, optional service) for read-aloud narration
@@ -78,14 +78,14 @@ Edelmore is closest in spirit to Day One but inverts its choices: local rather t
 ## Installation
 
 ```bash
-git clone https://github.com/sageframe-no-kaji/edelmore-diary
-cd edelmore-diary
-cp .env.example .env
-# edit .env: DATABASE_URL is required. TRANSCRIPTION_URL (Whisper) and
+git clone https://github.com/sageframe-no-kaji/edelmore
+cd edelmore
+cp apps/diary/.env.example apps/diary/.env
+# edit apps/diary/.env: DATABASE_URL is required. TRANSCRIPTION_URL (Whisper) and
 # TTS_URL (Kokoro) are optional — leave them blank to run without voice.
 # Set TZ to your household's timezone, and set ADMIN_PIN to lock the
 # /admin accounts page once first-run setup is done.
-docker compose up -d
+cd apps/diary && docker compose up -d
 ```
 
 A pre-built image for `linux/amd64` is published to GitHub Container Registry on every push to `main`:
@@ -102,7 +102,7 @@ Serve the diary through TLS (Caddy with an internal CA in the homelab pattern). 
 
 ```bash
 npm install
-cp .env.example .env
+cp apps/diary/.env.example apps/diary/.env
 npm run dev
 ```
 

@@ -54,5 +54,5 @@ Extraction hos (Ho-01/02/03) shipped from the reader's chain, not the diary's �
 
 - **One session, one ho, one chain.** See root `CLAUDE.md` § "Project documents & ho discipline."
 - **Extraction hos hold their scope.** Behavior changes surfaced during an extraction are new hos in the *affected app's* chain — not iterations on the extraction ho. (This is the lesson from Ho-03's scope drift; codified in `CLAUDE.md`.)
-- **Diary and reader do not share code except via `packages/`.** Presentation lives per-app. Only wire types + protocol adapters clear the shared-package bar.
+- **Diary and reader do not share code except via `packages/`.** Presentation lives per-app. Extract when the second consumer arrives AND both apps must consume the exact behavior — that is the bar for `packages/`.
 - **`ho-process/` is gitignored.** This file is the public-facing signpost; the chain docs themselves are private practitioner work.
