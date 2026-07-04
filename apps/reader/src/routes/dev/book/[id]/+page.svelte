@@ -48,17 +48,35 @@ $effect(() => {
   const ref = referenceEl;
   const b = book;
   if (!m || !ref || b.chapters.length === 0) return;
-  const all: number[][] = [];
-  for (const chapter of b.chapters) {
-    const t0 = performance.now();
-    all.push(m.paginate(ref, chapter.text, chapter.emphasis));
-    console.debug(
-      `[dev/book] chapter ${chapter.idx} (${chapter.text.length} chars) paginated in ${Math.round(performance.now() - t0)}ms`
-    );
-  }
-  chapterIdx = 0;
+  // Open on the first chapter that has text — cover-image-only spine entries
+  // (0 chars) render blank and make the book look broken as an opening state.
+  const firstText = Math.max(
+    0,
+    b.chapters.findIndex((c) => c.text.length > 0)
+  );
+  chapterIdx = firstText;
   spread = 0;
-  chapterSplits = all;
+  // Measure the opening chapter first and paint it immediately; the rest
+  // paginate one per macrotask so the main thread (and first paint) is never
+  // blocked — dev-mode measurement runs ~1-2s per chapter, and a synchronous
+  // all-chapters loop froze the page for the whole book.
+  const order = [firstText, ...b.chapters.map((_, i) => i).filter((i) => i !== firstText)];
+  let cancelled = false;
+  void (async () => {
+    for (const i of order) {
+      if (cancelled) return;
+      const chapter = b.chapters[i];
+      const t0 = performance.now();
+      chapterSplits[i] = m.paginate(ref, chapter.text, chapter.emphasis);
+      console.debug(
+        `[dev/book] chapter ${chapter.idx} (${chapter.text.length} chars) paginated in ${Math.round(performance.now() - t0)}ms`
+      );
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  })();
+  return () => {
+    cancelled = true;
+  };
 });
 
 const chapter = $derived(book.chapters[chapterIdx]);
@@ -190,6 +208,8 @@ function onKeydown(event: KeyboardEvent): void {
   .book-wrap {
     width: 100%;
     max-width: 72rem;
+    /* BookShell pulls itself up 2.4rem (translateY); keep it off the status line. */
+    margin-top: 2.4rem;
   }
 
   /* Padding lives on this wrapper, NOT on .page-body: the measurer copies
