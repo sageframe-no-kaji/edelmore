@@ -2,7 +2,7 @@
 
 _Where each app's Kamae chain sits right now. A signpost — update when a ho ships, opens, or gets filed. The chain docs themselves live in each app's gitignored `ho-process/` directory._
 
-Last updated: 2026-07-02 (Ho-03 merged to `main` as `5f1bce1`).
+Last updated: 2026-07-04 (audit fix batch #12–#17 merged; reader EPUB piping #18–#21 merged; reader Ho-04 page-turn rewrite opened, superseding diary ho-11).
 
 ---
 
@@ -13,7 +13,8 @@ Last updated: 2026-07-02 (Ho-03 merged to `main` as `5f1bce1`).
 | Ho | Status | Notes |
 |---|---|---|
 | ho-00 → ho-07 | ✅ shipped v1.0 | See `kamae-4-ho-outline.md`. Bootstrap through homelab deploy. |
-| **ho-08 — Narration UX: chapter-continuous audio** | 📋 **filed, not opened** | Whole-entry Kokoro pivot to eliminate the page-turn pause. Opens whenever it's worth Iona's time. |
+| **ho-08 — Narration UX: chapter-continuous audio** | 📋 **filed, not opened** | Whole-entry Kokoro pivot to eliminate the page-turn pause. Opens whenever it's worth Iona's time. ⚠️ number collides with shipped ho-08 (TTS) — renumber before opening (2026-07-03 audit). |
+| ho-11 — page-turn rewrite (View Transitions) | ↪️ superseded | Never executed; flip moved to `packages/book`. Re-filed as **reader Ho-04** (2026-07-04). |
 
 Extraction hos (Ho-01/02/03) shipped from the reader's chain, not the diary's — see below.
 
@@ -32,7 +33,9 @@ Extraction hos (Ho-01/02/03) shipped from the reader's chain, not the diary's �
 | Ho-01 — extract `@edelmore/design` | ✅ shipped (`078bf23`) | |
 | Ho-02 — extract `@edelmore/book` | ✅ shipped (`f29b619`) | |
 | Ho-03 — extract `@edelmore/narration` | ✅ shipped (`5f1bce1`) | Scope drift acknowledged in `hos/ho-03-extract-narration.md → Reflect`. Diary Ho-08 filed as the follow-up. |
-| Ho-04+ | ⏳ awaits Kamae 2 follow-up + Kamae 4 update | |
+| **Ho-04 — page-turn rewrite (View Transitions in `@edelmore/book`)** | 🟢 **open** | Supersedes diary ho-11. Step-wise practitioner-in-browser execution; both apps are verification surfaces. `hos/ho-04-page-turn-view-transitions.md` |
+| EPUB piping (scaffold, parser, library/ingestion, pagination + dev route) | ✅ shipped (#18–#21, 2026-07-03/04) | Built from `audit/R-AT-01…04` specs ahead of the Kamae 4 re-flow, per decisions in `notes/kamae-2-followup-prep.md` §2026-07-03. Kamae 4 assigns its numbers when it updates. |
+| Ho-05+ | ⏳ awaits Kamae 2 follow-up (identity mechanic, decision 7) + Kamae 4 re-flow | |
 
 ---
 
