@@ -25,6 +25,11 @@ describe('isKokoroVoiceUri', () => {
     expect(isKokoroVoiceUri('')).toBe(false);
   });
 
+  it('returns false for uppercase slugs (the contract is lowercase-only)', () => {
+    expect(isKokoroVoiceUri('AF_BELLA')).toBe(false);
+    expect(isKokoroVoiceUri('Af_Bella')).toBe(false);
+  });
+
   it('returns false for strings with numbers', () => {
     // Numbers are not in the Kokoro slug pattern [a-z]+_[a-z]+
     expect(isKokoroVoiceUri('af_bella2')).toBe(false);

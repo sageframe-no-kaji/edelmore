@@ -1,4 +1,4 @@
-import { error, type RequestHandler } from '@sveltejs/kit';
+import { type RequestHandler, error } from '@sveltejs/kit';
 
 /**
  * Configuration for createSpeakHandler. Each consuming app reads env vars in
@@ -133,7 +133,6 @@ function sleep(ms: number): Promise<void> {
 interface SpeakRequest {
   text: string;
   voice: string;
-  speed: number;
 }
 
 /**
@@ -157,9 +156,10 @@ export function createSpeakHandler(config: SpeakHandlerConfig): RequestHandler {
 
   function idleMs(): number {
     const minutes = config.idleMinutes;
-    return (typeof minutes === 'number' && Number.isFinite(minutes) && minutes > 0
-      ? minutes
-      : 10) * 60_000;
+    return (
+      (typeof minutes === 'number' && Number.isFinite(minutes) && minutes > 0 ? minutes : 10) *
+      60_000
+    );
   }
 
   function resetIdleTimer(): void {
@@ -177,10 +177,7 @@ export function createSpeakHandler(config: SpeakHandlerConfig): RequestHandler {
         await fetch(config.ttsUnloadUrl, { method: 'POST' });
         console.log('Kokoro model unloaded after idle timeout');
       } catch (e) {
-        console.error(
-          'Failed to unload Kokoro model:',
-          e instanceof Error ? e.message : e
-        );
+        console.error('Failed to unload Kokoro model:', e instanceof Error ? e.message : e);
       }
       return;
     }
@@ -192,10 +189,7 @@ export function createSpeakHandler(config: SpeakHandlerConfig): RequestHandler {
       });
       console.log('Kokoro stopped after idle timeout');
     } catch (e) {
-      console.error(
-        'Failed to stop Kokoro container:',
-        e instanceof Error ? e.message : e
-      );
+      console.error('Failed to stop Kokoro container:', e instanceof Error ? e.message : e);
     }
   }
 
@@ -224,16 +218,12 @@ export function createSpeakHandler(config: SpeakHandlerConfig): RequestHandler {
         method: 'POST',
       });
     } catch (e) {
-      console.error(
-        'Failed to start Kokoro container:',
-        e instanceof Error ? e.message : e
-      );
+      console.error('Failed to start Kokoro container:', e instanceof Error ? e.message : e);
       return;
     }
 
     const voicesUrl =
-      config.ttsVoicesUrl ??
-      config.ttsUrl?.replace('/dev/captioned_speech', '/v1/audio/voices');
+      config.ttsVoicesUrl ?? config.ttsUrl?.replace('/dev/captioned_speech', '/v1/audio/voices');
     if (!voicesUrl) return;
 
     const deadline = Date.now() + 60_000;
@@ -255,6 +245,25 @@ export function createSpeakHandler(config: SpeakHandlerConfig): RequestHandler {
   const handler: RequestHandler = async ({ request, locals }) => {
     if (!locals.user) throw error(401, 'Unauthorized');
 
+    // An armed idle timer must never fire mid-request (it would unload the
+    // model under an active generation) — clear it now; every exit path
+    // below re-arms it.
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    }
+
+    try {
+      return await speak(request);
+    } catch (e) {
+      // Failed before streaming began — re-arm so an errored request still
+      // lets Kokoro unload after the idle window.
+      resetIdleTimer();
+      throw e;
+    }
+  };
+
+  async function speak(request: Request): Promise<Response> {
     if (!config.ttsUrl) throw error(503, 'TTS not configured');
 
     const body = (await request.json()) as SpeakRequest;
@@ -278,12 +287,19 @@ export function createSpeakHandler(config: SpeakHandlerConfig): RequestHandler {
       return_timestamps: true,
     };
 
+    // Abort handle for the upstream fetch: fired when the client cancels the
+    // response stream, or (adapter permitting) when the client request itself
+    // is aborted — either way Kokoro stops generating.
+    const upstreamAbort = new AbortController();
+    request.signal?.addEventListener('abort', () => upstreamAbort.abort());
+
     let upstreamResponse: Response;
     try {
       upstreamResponse = await fetch(config.ttsUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify(upstreamBody),
+        signal: upstreamAbort.signal,
       });
     } catch (e) {
       console.error('TTS upstream unreachable:', e instanceof Error ? e.message : e);
@@ -291,11 +307,7 @@ export function createSpeakHandler(config: SpeakHandlerConfig): RequestHandler {
     }
 
     if (!upstreamResponse.ok) {
-      console.error(
-        'TTS upstream error:',
-        upstreamResponse.status,
-        upstreamResponse.statusText
-      );
+      console.error('TTS upstream error:', upstreamResponse.status, upstreamResponse.statusText);
       throw error(502, 'TTS failed');
     }
 
@@ -308,16 +320,18 @@ export function createSpeakHandler(config: SpeakHandlerConfig): RequestHandler {
     const normalisedInputText = normaliseForMatch(inputText);
     const encoder = new TextEncoder();
 
+    const reader = upstreamStream.getReader();
+    let cancelled = false;
+
     const stream = new ReadableStream({
       async start(controller) {
-        const reader = upstreamStream.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
         let charCursor = 0;
-        let hadOutput = false;
+        let lastAudioOffset = 0;
 
         function processLine(line: string): void {
-          if (!line) return;
+          if (!line || cancelled) return;
           let raw: unknown;
           try {
             raw = JSON.parse(line);
@@ -341,8 +355,11 @@ export function createSpeakHandler(config: SpeakHandlerConfig): RequestHandler {
           );
           charCursor = nextCursor;
 
+          // Carry the offset forward when a chunk has no timestamps so the
+          // client's absolute audio clock never snaps back to zero mid-stream.
           const audioOffset =
-            upstream.timestamps.length > 0 ? upstream.timestamps[0].start_time : 0;
+            upstream.timestamps.length > 0 ? upstream.timestamps[0].start_time : lastAudioOffset;
+          lastAudioOffset = audioOffset;
 
           const chunk: StreamChunk = {
             audio: upstream.audio,
@@ -351,7 +368,6 @@ export function createSpeakHandler(config: SpeakHandlerConfig): RequestHandler {
             audioOffset,
           };
           controller.enqueue(encoder.encode(`${JSON.stringify(chunk)}\n`));
-          hadOutput = true;
         }
 
         try {
@@ -370,12 +386,26 @@ export function createSpeakHandler(config: SpeakHandlerConfig): RequestHandler {
           // Flush any remaining partial line (upstream may omit trailing newline).
           processLine(buffer.trim());
 
-          controller.close();
-          if (hadOutput) resetIdleTimer();
+          if (!cancelled) controller.close();
         } catch (e) {
-          console.error('TTS stream error:', e instanceof Error ? e.message : e);
-          controller.error(e);
+          // Cancellation aborts the upstream read; that's not an error.
+          if (!cancelled && !upstreamAbort.signal.aborted) {
+            console.error('TTS stream error:', e instanceof Error ? e.message : e);
+            controller.error(e);
+          }
+        } finally {
+          // Success, error, or cancel: the request is over — start the idle
+          // countdown so Kokoro eventually unloads.
+          resetIdleTimer();
         }
+      },
+      async cancel() {
+        // The client dropped the response (stop button, navigation): stop
+        // reading and abort upstream so Kokoro stops generating.
+        cancelled = true;
+        upstreamAbort.abort();
+        await reader.cancel().catch(() => {});
+        resetIdleTimer();
       },
     });
 
@@ -386,7 +416,7 @@ export function createSpeakHandler(config: SpeakHandlerConfig): RequestHandler {
         'Cache-Control': 'no-cache',
       },
     });
-  };
+  }
 
   return handler;
 }

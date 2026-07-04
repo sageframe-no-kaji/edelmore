@@ -27,12 +27,13 @@ async function loadShim(): Promise<void> {
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
-function makeAuthedEvent(body: unknown) {
+function makeAuthedEvent(body: unknown, opts?: { signal?: AbortSignal }) {
   return {
     request: new Request('http://localhost/api/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: opts?.signal ?? null,
     }),
     locals: {
       user: {
@@ -380,6 +381,79 @@ describe('POST /api/speak', () => {
     const [chunk] = (await readNdjson(response)) as Array<{ audioOffset: number }>;
     expect(chunk.audioOffset).toBe(1.5);
   });
+
+  it('carries audioOffset forward when a chunk has no timestamps', async () => {
+    // A timestamp-less chunk must not snap the client's absolute audio clock
+    // back to zero — it inherits the previous chunk's offset.
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      makeUpstreamStreamResponse([
+        makeKokoroChunk({
+          timestamps: [{ word: 'Hello', start_time: 1.5, end_time: 1.8 }],
+        }),
+        makeKokoroChunk({ timestamps: [] }),
+      ])
+    );
+
+    const response = await POST(
+      makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1 })
+    );
+    const chunks = (await readNdjson(response)) as Array<{ audioOffset: number }>;
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0].audioOffset).toBe(1.5);
+    expect(chunks[1].audioOffset).toBe(1.5);
+  });
+
+  it('cancelling the response stream cancels the upstream reader and aborts the fetch', async () => {
+    // Upstream that emits one chunk and then never closes — simulates Kokoro
+    // still generating when the client hits stop.
+    let upstreamCancelled = false;
+    const upstreamBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(`${JSON.stringify(makeKokoroChunk())}\n`));
+      },
+      cancel() {
+        upstreamCancelled = true;
+      },
+    });
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(new Response(upstreamBody, { status: 200 }));
+
+    const response = await POST(
+      makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1 })
+    );
+    const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+    await reader.read(); // first chunk arrives
+    await reader.cancel(); // client drops the stream
+
+    expect(upstreamCancelled).toBe(true);
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect((init.signal as AbortSignal).aborted).toBe(true);
+  });
+
+  it('aborts the upstream fetch when the client request is aborted', async () => {
+    // Never-ending upstream: generation is in flight when the client aborts.
+    const upstreamBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(`${JSON.stringify(makeKokoroChunk())}\n`));
+      },
+    });
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(new Response(upstreamBody, { status: 200 }));
+
+    const clientAbort = new AbortController();
+    const response = await POST(
+      makeAuthedEvent(
+        { text: 'Hello world', voice: 'af_bella', speed: 1 },
+        { signal: clientAbort.signal }
+      )
+    );
+    clientAbort.abort();
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect((init.signal as AbortSignal).aborted).toBe(true);
+    // Tidy up the still-open response stream.
+    await (response.body as ReadableStream<Uint8Array>).cancel();
+  });
 });
 
 // ── On-demand Kokoro lifecycle (DOCKER_API_URL configured) ─────────────────────
@@ -535,6 +609,47 @@ describe('POST /api/speak — TTS_UNLOAD_URL fork path', () => {
     const calls = (fetchMock as ReturnType<typeof vi.fn>).mock.calls;
     expect(calls.some((c) => String(c[0]) === unloadUrl)).toBe(true);
     expect(calls.every((c) => !String(c[0]).endsWith('/stop'))).toBe(true);
+  });
+
+  it('a new request clears a previously armed idle timer', async () => {
+    // The timer armed by request 1 must not fire mid-request-2 — it is
+    // cleared at request entry and re-armed when request 2's stream ends.
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockResolvedValueOnce(makeUpstreamStreamResponse()) // request 1 TTS
+      .mockResolvedValueOnce(makeUpstreamStreamResponse()) // request 2 TTS
+      .mockResolvedValue(new Response(null, { status: 200 })); // eventual unload
+
+    const r1 = await POST(makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1 }));
+    await r1.text(); // stream done → idle timer armed (5 min)
+
+    await vi.advanceTimersByTimeAsync(4 * 60_000); // close to expiry
+
+    const r2 = await POST(makeAuthedEvent({ text: 'Hello world', voice: 'af_bella', speed: 1 }));
+    await r2.text(); // re-arms a fresh 5-minute timer
+
+    // Past request 1's original expiry (t = 5.5 min): no unload call.
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(fetchMock.mock.calls.some((c) => String(c[0]) === unloadUrl)).toBe(false);
+
+    // Past request 2's expiry: exactly one unload.
+    await vi.advanceTimersByTimeAsync(4 * 60_000);
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]) === unloadUrl)).toHaveLength(1);
+  });
+
+  it('re-arms the idle timer when the request fails before streaming', async () => {
+    // An errored request must still let Kokoro unload after the idle window.
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockRejectedValueOnce(new TypeError('fetch failed')) // TTS unreachable
+      .mockResolvedValue(new Response(null, { status: 200 })); // unload
+
+    await expect(
+      POST(makeAuthedEvent({ text: 'hello', voice: 'af_bella', speed: 1 }))
+    ).rejects.toMatchObject({ status: 503 });
+
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(fetchMock.mock.calls.some((c) => String(c[0]) === unloadUrl)).toBe(true);
   });
 
   it('continues silently when the unload call fails', async () => {
