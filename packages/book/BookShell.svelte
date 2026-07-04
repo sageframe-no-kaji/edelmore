@@ -92,6 +92,10 @@ function makeFace(source: HTMLElement, isBack: boolean): HTMLElement {
   clone.style.boxShadow = 'none';
   clone.style.clipPath = 'none';
   clone.style.visibility = 'visible';
+  // The clone inherits `.page-left`/`.page-right`, hence their
+  // `view-transition-name`. Two elements sharing a name make the browser skip
+  // the transition, so strip it here — the clone is never a VT surface.
+  clone.style.setProperty('view-transition-name', 'none');
   if (isBack) clone.style.transform = 'rotateY(180deg)';
   return clone;
 }
@@ -161,6 +165,7 @@ export async function flip(
           clone.style.boxShadow = 'none';
           clone.style.clipPath = 'none';
           clone.style.visibility = 'visible';
+          clone.style.setProperty('view-transition-name', 'none');
           return clone;
         })()
       : null;
@@ -200,7 +205,28 @@ export async function flip(
 
     // Run the mutation (sync state change, or async routed navigation).
     // A rejection propagates to the caller; the finally below cleans up.
-    await Promise.resolve(mutate());
+    //
+    // Phase A2 (diagnostic): where View Transitions exist, run the mutation
+    // inside startViewTransition so a browser transition fires *behind* the
+    // clone-rotate (both mechanisms run; the custom rotation stays visible).
+    // We await updateCallbackDone — the mutation's completion — not finished,
+    // so the clone rotation still starts as soon as the DOM has updated. Phase
+    // B replaces this dual path with a VT-only branch.
+    if (
+      typeof document !== 'undefined' &&
+      typeof document.startViewTransition === 'function'
+    ) {
+      const transition = document.startViewTransition(() =>
+        Promise.resolve(mutate())
+      );
+      // finished mirrors a mutate() rejection; observe it so a failure isn't an
+      // unhandled rejection. updateCallbackDone carries that rejection to the
+      // finally below (and to the caller — AT-02).
+      transition.finished.catch(() => {});
+      await transition.updateCallbackDone;
+    } else {
+      await Promise.resolve(mutate());
+    }
     await tick();
 
     // Tween the rotation. backFace is NOT appended yet — we add it at the
