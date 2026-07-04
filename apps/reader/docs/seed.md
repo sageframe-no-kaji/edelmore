@@ -1,5 +1,7 @@
 # Edelmore Reader — Seed
 
+*Committed copy of the seed; the working copy lives in `apps/reader/ho-process/seed.md` (gitignored).*
+
 *Kamae 1, fast pass. Sibling app to Edelmore Diary inside the Edelmore monorepo; awaits per-package extraction of diary primitives and bird-narrator premise validation before code starts.*
 
 *Updated 2026-06-19 to reflect the workspace conversion — the diary now lives at `apps/diary/` and this seed at `apps/reader/docs/seed.md`. The original Kamae-1 thinking is preserved; only the dependency framing has moved from "cross-repo refactor" to "in-workspace package extraction."*
@@ -45,7 +47,7 @@ Personal/family project, open-source-friendly under the atmarcus.net pattern. Do
 
 ## Architecture Direction
 
-SvelteKit, SQLite, Docker, Sageframe-deployed. Same stack as the diary. Same Kokoro TTS service. Same `/api/speak` shim. Same ReaderView for word highlighting. Same View Transitions page turn. Same cottage-core visual identity.
+SvelteKit, SQLite, Docker, Sageframe-deployed. Same stack as the diary. Same Kokoro TTS service. Same `/api/speak` shim. Same ReaderView for word highlighting. Same custom clone-rotate flip via `packages/book`; View Transitions rewrite in progress as reader Ho-04. Same cottage-core visual identity.
 
 **Crucial difference from the diary:** content is read-only, known up front, and never changes during a reading session. Pagination becomes geometric inspection of CSS Multi-column Layout flow rather than overflow-detected textareas. The diary's textarea-overflow pagination mechanism doesn't apply and isn't needed.
 
@@ -116,8 +118,8 @@ The reader **cannot responsibly start writing code until two gates clear**:
 
 1. **Per-package extraction.** The diary's book primitive, narration stack, and design tokens live tangled inside `apps/diary/src/lib/` and `apps/diary/src/routes/(authenticated)/+layout.svelte`. They need to be lifted into the workspace's `packages/`:
 
-   - **`@edelmore/book`** — Cover, ExLibris, Spread, page-turn animation (View Transitions), stacks, seam, gutter shadow. The book metaphor as a component library. No diary-specific code.
-   - **`@edelmore/narration`** — `BirdNarrator` finally as a real component (currently inline in `+layout.svelte`), `ReaderView`, tokenize/findWordIndex, the `/api/speak` shim, voice picker. No diary-specific code.
+   - **`@edelmore/book`** — Cover, ExLibris, Spread, custom clone-rotate flip (View Transitions rewrite in progress as reader Ho-04), stacks, seam, gutter shadow. The book metaphor as a component library. No diary-specific code.
+   - **`@edelmore/narration`** — Kokoro TTS handler factories and normalized stream types (wire adapter only). Narration UI (`BirdNarrator`, `ReaderView`, voice picker) lives per-app, not in `packages/`.
    - **`@edelmore/design`** — Cottage-core Tailwind tokens, color palette, EB Garamond / Cedarville Cursive setup, paper texture. No diary-specific code.
 
    These exist today as working code; extraction is real work — likely a multi-ho effort inside `apps/diary` — but the workspace makes it mechanical: import paths shift from `$lib/...` to `@edelmore/...`, the packages get hoisted at the workspace root, no cross-repo synchronization. Worth doing for the diary's own clarity even if the reader never happens; required if it does.

@@ -4,7 +4,7 @@
 
 > Upload an EPUB. Open it like a book. A small songbird in the margin reads it aloud in a warm voice while each word glows softly as it's spoken. Pages turn at the right moment. The book remembers where you left off. Built for the kids who hear stories better than they read them, and for anyone who wants reading to feel like the thing it used to be.
 
-**Status:** Seed only. No code yet. The reader lives at `apps/reader/` in the Edelmore monorepo alongside `apps/diary/` (shipped v1.2). It will start once the diary's book-metaphor and narration primitives have been extracted into the workspace's `packages/` (e.g., `@edelmore/book`, `@edelmore/narration`, `@edelmore/design`) — extraction happens when the reader code actually needs them, not before.
+**Status:** In development. Shared packages extracted and shipped (reader Ho-01–03): `@edelmore/design`, `@edelmore/book`, `@edelmore/narration`. EPUB scaffold, parser, household library ingestion, and pagination testbed shipped 2026-07-03/04. Reader app design in progress.
 
 ## What's Broken
 
@@ -44,10 +44,10 @@ Edelmore Reader's differentiator isn't the technology — it's that the book met
 
 The codebase will reuse most of the diary's infrastructure. Once the diary's book-metaphor and narration primitives are extracted into shared workspace packages, the reader becomes a thin layer that swaps out the content model (diary entries → book chapters) and the pagination strategy (textarea-overflow → CSS Multi-column Layout).
 
-**Reused from `apps/diary` (via future `packages/*`), unchanged:**
-- The book metaphor — cover, spreads, page-edge stacks, gutter seam, View Transitions page-turn animation.
-- The narration stack — Kokoro TTS via `/api/speak`, the dispatcher pattern, voice picker, rate slider, Web Speech API fallback.
-- Word-by-word highlighting — `ReaderView` component, the soft green aura, the boundary-driven page-turn.
+**Reused from `apps/diary` (via `packages/*`):**
+- The book metaphor — cover, spreads, page-edge stacks, gutter seam, custom clone-rotate flip (`packages/book`); View Transitions rewrite in progress as reader Ho-04.
+- The narration stack — `@edelmore/narration` wire adapter (Kokoro handler factories + stream types); narration UI (bird, ribbon, voice picker, rate slider) is per-app.
+- Word-by-word highlighting — per-app `ReaderView` component, the soft green aura, the boundary-driven page-turn.
 - Cottage-core visual identity — Tailwind design tokens, paper texture, EB Garamond serif.
 - Sageframe-conventional Docker deployment.
 
@@ -65,7 +65,7 @@ The codebase will reuse most of the diary's infrastructure. Once the diary's boo
 - **Kokoro TTS** via a self-hosted [Kokoro-FastAPI](https://github.com/remsky/kokoro-fastapi) instance — warm voices, runs on a small CPU box, no cloud TTS bill, no diary text leaving the home network.
 - **EPUB parsing** via `epub2` or similar Node library — extract text, manifest, spine, resources. Inspired by [OpenReader WebUI](https://github.com/richardr1126/OpenReader-WebUI)'s approach.
 - **CSS Multi-column Layout** for pagination — the browser flows chapter text into column-shaped pages; reading position becomes a character offset that maps to a column via DOM geometry.
-- **View Transitions API** for page-turn animation — the same physical-feeling rotation used in the diary.
+- **Custom clone-rotate flip** for page-turn animation via `packages/book` — the same mechanism used in the diary. A View Transitions rewrite is in progress as reader Ho-04.
 - **Tailwind v4** + cottage-core design tokens — cream palette, EB Garamond serif, paper texture, edelweiss-green word-glow.
 - **Docker** via the [Sageframe](https://sageframe.net) deployment pattern.
 
@@ -73,10 +73,10 @@ The codebase will reuse most of the diary's infrastructure. Once the diary's boo
 
 This is a state-based roadmap, not a date-based one.
 
-1. **Now.** Seed only. No code.
-2. **After `apps/diary` ships and the bird's narration feature is validated by real users.** If the narration is heavily used, the reader's premise is validated; if not, this seed gets archived.
-3. **After premise validation.** Extract shared diary primitives into the workspace's `packages/` — `@edelmore/book`, `@edelmore/narration`, `@edelmore/design`. Multi-week effort inside `apps/diary`.
-4. **After extraction.** Open ho-01 for `apps/reader`. Build EPUB parsing and shelf UI as the first vertical slice.
+1. **Done.** Seed, package extractions (Ho-01–03), EPUB scaffold, parser, library ingestion, and pagination testbed shipped.
+2. **Done.** Diary shipped v1.2; narration validated by real users.
+3. **Done.** Shared primitives extracted into `packages/` — `@edelmore/book`, `@edelmore/narration`, `@edelmore/design`.
+4. **In progress.** EPUB parsing and EPUB pipeline shipped; full app design (identity mechanic, Kamae 2 follow-up) pending.
 5. **Subsequent hos.** CSS Multi-column pagination. Reading position persistence. Illustration handling. Built-in public-domain library. Deploy.
 6. **v1.0.** Six public-domain children's books, full read-along, position sync, illustration support.
 7. **Beyond v1.** AI-generated descriptions for illustrations lacking alt text. Audio caching. Per-chapter voice selection. Possibly XTTS-based voice cloning for parents to record their own narrator voice. All deferred and intentional.
@@ -84,7 +84,7 @@ This is a state-based roadmap, not a date-based one.
 ## Documents
 
 - `docs/seed.md` — the original Kamae-1-style seed deliberation (preserved verbatim).
-- Diary system design lives at the repo root: `../../ho-process/kamae-2-edelmore-system-design.md`.
+- Diary system design lives at `apps/diary/ho-process/kamae-2-edelmore-system-design.md` (gitignored — private practitioner work).
 
 ## Why "Edelmore"
 

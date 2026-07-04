@@ -11,7 +11,7 @@ covers diary-specific concerns only.
 - SvelteKit 2 (TypeScript, Svelte 5 runes)
 - SQLite via `better-sqlite3`
 - Tailwind v4 (via `@tailwindcss/vite` — no `tailwind.config.js` needed)
-- Custom CSS 3D page-turn primitive in `(authenticated)/+layout.svelte` (StPageFlip was rejected during ho-03 — see system design)
+- Custom CSS 3D page-turn primitive in `packages/book/BookShell.svelte` (StPageFlip was rejected during ho-03 — see system design)
 - argon2id via `argon2` npm package (PIN hashing)
 - `faster-whisper` (separate homelab service) for voice transcription
 

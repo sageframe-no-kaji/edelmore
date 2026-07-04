@@ -8,7 +8,7 @@ a book metaphor, narration stack, and cottage-core visual identity.
 - `apps/diary/` — shipped v1.2. Cottage-core private diary for children. See `apps/diary/CLAUDE.md` for diary-specific rules.
 - `apps/reader/` — seed + Kamae docs. Read-along EPUB reader. See `apps/reader/README.md` and `apps/reader/ho-process/`.
 
-`packages/` holds only truly shared code — types and adapters both apps must consume identically. Today: `@edelmore/design` (tokens, fonts), `@edelmore/book` (page-flip primitives), `@edelmore/narration` (Kokoro wire adapter — types + `createSpeakHandler` / `createVoicesHandler`). Don't extract on hypothesis; extract when the second consumer arrives AND the bar is "both apps must consume this exact behavior or one is broken." Presentation components (bird UI, ribbons, pickers) live per-app, not in `packages/`.
+`packages/` holds only truly shared code — types and adapters both apps must consume identically. Today: `@edelmore/design` (tokens, CDN fonts), `@edelmore/book` (page-flip primitives), `@edelmore/narration` (Kokoro wire adapter — types + `createSpeakHandler` / `createVoicesHandler`). Don't extract on hypothesis; extract when the second consumer arrives AND the bar is "both apps must consume this exact behavior or one is broken." Presentation components (bird UI, ribbons, pickers) live per-app, not in `packages/`.
 
 ## Workspace
 

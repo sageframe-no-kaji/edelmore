@@ -9,9 +9,9 @@ and a cottage-core visual identity. Each app deploys independently.
 ## Apps
 
 - **[`apps/diary/`](apps/diary/)** — shipped at v1.2. A private diary for children rendered as a book. Voice transcription via Whisper, read-aloud narration via Kokoro TTS, homelab-only. See `apps/diary/README.md` for the full story.
-- **[`apps/reader/`](apps/reader/)** — seed only, no code yet. A read-along EPUB reader that feels like a real book. See `apps/reader/README.md` for the vision and `apps/reader/docs/seed.md` for the original Kamae-1 seed.
+- **[`apps/reader/`](apps/reader/)** — in development. EPUB scaffold, parser, household library, and pagination testbed shipped. A read-along EPUB reader that feels like a real book. See `apps/reader/README.md` for the vision and `apps/reader/docs/seed.md` for the original Kamae-1 seed.
 
-Shared primitives will live under `packages/` (e.g., `@edelmore/book`, `@edelmore/narration`, `@edelmore/design`) when the reader actually consumes them. The packages directory is intentionally empty until then — package boundaries are drawn by real second-consumer pressure, not by hypothesis.
+Shared primitives live in `packages/`: `@edelmore/design` (CSS tokens, CDN fonts), `@edelmore/book` (leather shell, page-flip, two-page spread), and `@edelmore/narration` (Kokoro wire adapter — handler factories and stream types). Package boundaries are drawn by real second-consumer pressure, not by hypothesis.
 
 ## Layout
 
@@ -19,8 +19,8 @@ Shared primitives will live under `packages/` (e.g., `@edelmore/book`, `@edelmor
 edelmore/
 ├── apps/
 │   ├── diary/          # SvelteKit + SQLite, shipped v1.2 (ho-process/ inside)
-│   └── reader/         # seed + docs, no code yet
-├── packages/           # empty until extraction is justified
+│   └── reader/         # in development — EPUB pipeline, scaffold, paginator
+├── packages/           # shared code (@edelmore/design, @edelmore/book, @edelmore/narration)
 ├── .github/workflows/  # repo-wide CI (verify stack + diary image publish)
 ├── biome.json          # repo-wide lint/format
 ├── lefthook.yml        # repo-wide pre-commit
