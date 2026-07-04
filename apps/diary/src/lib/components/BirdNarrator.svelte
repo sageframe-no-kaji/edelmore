@@ -2,26 +2,15 @@
 export type BirdPhase = 'idle' | 'loading' | 'playing' | 'paused';
 
 export interface BirdNarratorApi {
-  play: (fromOffset: number, untilOffset?: number | null) => Promise<void>;
+  play: (fromOffset: number) => Promise<void>;
   pause: () => void;
   resume: () => void;
-  seekTo: (absCharIndex: number, opts?: { play?: boolean }) => Promise<void>;
   stop: () => void;
-  preloadNext: (fromOffset: number, untilOffset?: number | null) => Promise<void>;
 }
 
 const DEFAULT_KOKORO_VOICE = 'bf_emma';
 const RATE_MIN = 0.5;
 const RATE_MAX = 1.6;
-// Fire onPageBoundaryReached when the currently-highlighted word is within
-// this many chars of pageEndOffset — about half a line of text. Language-
-// agnostic; doesn't depend on audio.duration being known.
-const BOUNDARY_LOOKAHEAD_CHARS = 30;
-// When the chain fires (preload is ready), cut current audio and wait this
-// long before playing preload's first chunk. Set to 0 for no perceptible
-// gap — audio effectively hands off from current spread to next. Bump if a
-// "beat" between spreads is desired.
-const CHAIN_GAP_MS = 0;
 </script>
 
 <script lang="ts">
@@ -37,7 +26,6 @@ interface Props {
   text: string;
   voiceURI: string | null;
   startOffset: number;
-  untilOffset?: number | null;
   pageEndOffset?: number | null;
   onWordHighlight?: (absCharIndex: number) => void;
   onPageBoundaryReached?: () => void;
@@ -49,7 +37,6 @@ let {
   text,
   voiceURI,
   startOffset,
-  untilOffset = null,
   pageEndOffset = null,
   onWordHighlight,
   onPageBoundaryReached,
@@ -62,21 +49,17 @@ let rate = $state(1.0);
 
 // ── StreamCtx ─────────────────────────────────────────────────────────────
 //
-// One stream context per /api/speak request. The bird keeps a `current`
-// context (the one whose audio is in or about to be in the audio element)
-// and an optional `preload` context (the next spread's audio, fetched ahead
-// of time so it can chain on immediately when current ends).
+// One stream context per /api/speak request — and a bird click now streams
+// the WHOLE entry (current spread's start to the end of the entry) in a
+// single request. Chunks arrive progressively over NDJSON and play in
+// sequence out of `current.audioQueue`; there is no second stream and no
+// page-boundary refetch. The page turn is a consumer of the highlight
+// timeline (see startBoundaryPolling), not a driver of the audio.
 
 type QueuedChunk = {
   blobUrl: string;
   audioEl: HTMLAudioElement;
   audioOffset: number;
-  // Prewarmed = decoder + audio pipeline are fully initialized. When true,
-  // play() at swap time hits an already-warm element and starts instantly
-  // (no perceptible pause). Preload chunks get prewarmed via a muted
-  // play/pause dance in the background; current-stream chunks skip prewarm
-  // (they'll play in sequence and the pipeline is already active).
-  warm: boolean;
 };
 
 type StreamCtx = {
@@ -89,19 +72,8 @@ type StreamCtx = {
 };
 
 let current: StreamCtx | null = null;
-let preload: StreamCtx | null = null;
-// chainArmed: boundary fired, want to cut current and chain as soon as
-//   preload has a chunk. Set true on boundary fire, false once we initiate
-//   the chain OR once current naturally ends (in which case chainPending
-//   takes over).
-// chainPending: current's audio has fully drained but preload is still
-//   fetching its first chunk. When that chunk arrives, swap immediately
-//   (no extra delay — silence is already happening).
-let chainArmed = false;
-let chainPending = false;
-let chainGapTimer: ReturnType<typeof setTimeout> | null = null;
 
-// Active playback head — derived from whichever StreamCtx is current.
+// Active playback head — derived from the current StreamCtx.
 let audioEl: HTMLAudioElement | null = null;
 let audioBlobUrl: string | null = null;
 let chunkTimeOffset = 0;
@@ -109,6 +81,11 @@ let boundaryInterval: ReturnType<typeof setInterval> | null = null;
 let boundaryIdx = 0;
 let lastAdvancedFromOffset: number | null = null;
 let lastEmittedCharPos: number | null = null;
+// Set by pause() (even between chunks, when audioEl is null); the chunk-
+// advance path refuses to start the next chunk while it's set, so a pause
+// that lands in a chunk gap holds until resume() clears it. This is the
+// structural fix for the pause race (ho-13 Decision 4).
+let userPaused = false;
 
 function newStreamCtx(baseOffset: number): StreamCtx {
   return {
@@ -173,21 +150,17 @@ function stopAll() {
   boundaryIdx = 0;
   lastAdvancedFromOffset = null;
   lastEmittedCharPos = null;
-  chainArmed = false;
-  chainPending = false;
-  if (chainGapTimer) {
-    clearTimeout(chainGapTimer);
-    chainGapTimer = null;
-  }
+  userPaused = false;
   cleanupCtx(current);
   current = null;
-  cleanupCtx(preload);
-  preload = null;
 }
 
-async function playInternal(fromOffset: number, until: number | null) {
+async function playInternal(fromOffset: number) {
   stopAll();
-  const slice = text.slice(fromOffset, until ?? undefined);
+  // One stream per entry: synthesize from the current spread's start offset
+  // to the END of the entry (ho-13 Decision 1). No untilOffset — the page
+  // turn is driven by the highlight timeline, not by a per-spread request.
+  const slice = text.slice(fromOffset);
   if (!slice.trim()) {
     setPhase('idle');
     return;
@@ -209,22 +182,20 @@ async function startFetch(ctx: StreamCtx, slice: string) {
     });
     if (!response.ok) throw new Error(`TTS HTTP ${response.status}`);
   } catch (e) {
-    if (ctx === current || ctx === preload) {
+    if (ctx === current) {
       ctx.done = true;
       console.warn('Kokoro fetch failed', e);
-      if (ctx === current && phase === 'loading') setPhase('idle');
-      if (ctx === preload && chainPending) chainOrEnd();
+      if (phase === 'loading') setPhase('idle');
     }
     return;
   }
   // Bail out if the ctx was cleaned up while the headers were in flight.
-  if (ctx !== current && ctx !== preload) return;
+  if (ctx !== current) return;
 
   const body = response.body;
   if (!body) {
     ctx.done = true;
-    if (ctx === current && phase === 'loading') setPhase('idle');
-    if (ctx === preload && chainPending) chainOrEnd();
+    if (phase === 'loading') setPhase('idle');
     return;
   }
   ctx.reader = body.getReader();
@@ -241,7 +212,7 @@ async function readStream(ctx: StreamCtx) {
     while (true) {
       const { done, value } = await reader.read();
       // If our ctx was cleaned up, bail.
-      if (ctx !== current && ctx !== preload) {
+      if (ctx !== current) {
         void reader.cancel();
         return;
       }
@@ -255,12 +226,15 @@ async function readStream(ctx: StreamCtx) {
           }
         }
         ctx.done = true;
-        // Current stream ended with no audio at all → idle.
-        if (ctx === current && phase === 'loading' && audioEl === null) {
+        // Stream ended with no audio at all → idle.
+        if (phase === 'loading' && audioEl === null) {
           setPhase('idle');
+          return;
         }
-        // Preload stream ended; if a chain is waiting, swap (or end if empty).
-        if (ctx === preload && chainPending) chainOrEnd();
+        // Stream finished after the last chunk already drained (audioEl null,
+        // queue empty) → the entry is over. pumpQueue ends it (and respects
+        // userPaused, so a pause sitting in the tail gap won't end early).
+        pumpQueue();
         return;
       }
       buffer += decoder.decode(value, { stream: true });
@@ -278,11 +252,10 @@ async function readStream(ctx: StreamCtx) {
       }
     }
   } catch (e) {
-    if (ctx !== current && ctx !== preload) return;
+    if (ctx !== current) return;
     console.warn('TTS stream error', e);
     ctx.done = true;
-    if (ctx === current && phase === 'loading') setPhase('idle');
-    if (ctx === preload && chainPending) chainOrEnd();
+    if (phase === 'loading') setPhase('idle');
   }
 }
 
@@ -294,38 +267,28 @@ function ingestChunk(ctx: StreamCtx, chunk: StreamChunk) {
   el.src = blobUrl;
   el.playbackRate = rate;
   el.load();
-  // Only prewarm preload chunks — current-stream chunks play in sequence
-  // with an already-active audio pipeline. Prewarm is deferred/async; the
-  // chunk is added to the queue immediately with warm=false, and warm flips
-  // true when the muted-play/pause dance completes. tryChainNow only cuts
-  // current when the first preload chunk is warm, so our onpause handler is
-  // never installed while a prewarm pause() is still in flight (avoiding
-  // the race that stalls highlights after swap).
-  const queued: QueuedChunk = {
-    blobUrl,
-    audioEl: el,
-    audioOffset: chunk.audioOffset,
-    warm: ctx !== preload,
-  };
-  ctx.audioQueue.push(queued);
-  if (ctx === preload) {
-    void prewarmChunk(queued);
-  }
+  ctx.audioQueue.push({ blobUrl, audioEl: el, audioOffset: chunk.audioOffset });
 
-  // First chunk into current with no playback head yet → start playing.
-  if (ctx === current && audioEl === null) {
+  // A chunk arrived. If nothing is playing right now, start it — unless the
+  // user has paused (pumpQueue respects userPaused), in which case it waits
+  // for resume().
+  pumpQueue();
+}
+
+// Start the next queued chunk when the pipeline is free. The single point of
+// truth for "should the next chunk play": nothing playing, not paused, and a
+// chunk is available. When the queue is empty and the stream is done, the
+// entry has ended.
+function pumpQueue() {
+  if (!current || audioEl !== null || userPaused) return;
+  if (current.audioQueue.length > 0) {
     startNextChunkFromCurrent();
     return;
   }
-  // Preload chunk arrived while we want to chain — try now.
-  if (ctx === preload && chainArmed) {
-    tryChainNow();
-    return;
+  if (current.done) {
+    handleEnd();
   }
-  // Preload chunk arrived while current already finished — swap immediately.
-  if (ctx === preload && chainPending) {
-    chainOrEnd();
-  }
+  // else: stream is still delivering — wait for the next ingestChunk.
 }
 
 function startNextChunkFromCurrent() {
@@ -364,141 +327,16 @@ function advanceToNextChunk() {
     audioBlobUrl = null;
   }
   audioEl = null;
-
-  if (!current) return;
-  if (current.audioQueue.length > 0) {
-    startNextChunkFromCurrent();
-    return;
-  }
-  if (current.done) {
-    // Audio naturally ended. Drop the "armed for cut" flag — chainOrEnd
-    // handles the wait-for-preload case via chainPending and skips the
-    // 250ms gap (silence is already happening).
-    chainArmed = false;
-    chainOrEnd();
-    return;
-  }
-  // Stream is still pushing chunks — wait for ingestChunk to call us.
-}
-
-function chainOrEnd() {
-  if (preload && preload.audioQueue.length > 0) {
-    // If the first preload chunk isn't warm yet (prewarm still running),
-    // wait — swapping mid-prewarm hits the same handler race that stalls
-    // highlights.
-    if (!preload.audioQueue[0].warm) {
-      chainPending = true;
-      setPhase('loading');
-      return;
-    }
-    swapCurrentToPreload();
-    return;
-  }
-  if (preload && preload.done) {
-    // Preload stream closed with no playable chunks. Drop and end.
-    cleanupCtx(preload);
-    preload = null;
-    handleEnd();
-    return;
-  }
-  if (preload) {
-    // Still fetching the next spread — hold and wait for first chunk.
-    chainPending = true;
-    setPhase('loading');
-    return;
-  }
-  handleEnd();
-}
-
-function swapCurrentToPreload() {
-  if (!preload) return;
-  cleanupCtx(current);
-  current = preload;
-  preload = null;
-  chainPending = false;
-  chainArmed = false;
-  boundaryIdx = 0;
-  lastAdvancedFromOffset = null;
-  lastEmittedCharPos = null;
-  startNextChunkFromCurrent();
+  // The queue drives itself: play the next chunk if one is ready and the user
+  // hasn't paused; end the entry if the stream is drained. A pause that landed
+  // in this gap is held by userPaused until resume() calls pumpQueue again.
+  pumpQueue();
 }
 
 function handleEnd() {
   stopAll();
   setPhase('idle');
   onNarrationEnd?.();
-}
-
-// ── Chain-now plumbing ───────────────────────────────────────────────────
-//
-// On boundary fire (the moment the consumer flips + preloads), set chainArmed.
-// As soon as preload has a chunk available, cut current audio immediately,
-// wait CHAIN_GAP_MS for the user-perceived "beat," then swap to preload.
-
-async function prewarmChunk(item: QueuedChunk) {
-  // Start muted playback to force the browser to allocate decoder + audio-
-  // output resources. Immediately pause and rewind to 0 so the real play()
-  // call later starts from the beginning at zero latency. Mark warm=true
-  // ONLY after the full dance completes so tryChainNow doesn't set our
-  // pause/play handlers while this pause() is still queued.
-  const el = item.audioEl;
-  el.muted = true;
-  try {
-    await el.play();
-    el.pause();
-    try {
-      el.currentTime = 0;
-    } catch {
-      /* some browsers throw setting currentTime pre-metadata */
-    }
-    el.muted = false;
-  } catch {
-    el.muted = false;
-  }
-  item.warm = true;
-  // If a chain has been waiting for warmup, take another crack at it.
-  if (chainArmed) tryChainNow();
-  if (chainPending) chainOrEnd();
-}
-
-function tryChainNow() {
-  if (!chainArmed) return;
-  if (!preload || preload.audioQueue.length === 0) return;
-  // Wait for the first preload chunk to finish prewarming — cutting current
-  // now would install our onpause handler and the still-queued prewarm
-  // pause() would flip phase to 'paused' and stall highlights.
-  if (!preload.audioQueue[0].warm) return;
-  chainArmed = false;
-  cutCurrentAudio();
-  if (chainGapTimer) clearTimeout(chainGapTimer);
-  chainGapTimer = setTimeout(() => {
-    chainGapTimer = null;
-    if (!preload) {
-      handleEnd();
-      return;
-    }
-    swapCurrentToPreload();
-  }, CHAIN_GAP_MS);
-}
-
-function cutCurrentAudio() {
-  if (boundaryInterval) {
-    clearInterval(boundaryInterval);
-    boundaryInterval = null;
-  }
-  if (audioEl) {
-    audioEl.onplay = null;
-    audioEl.onpause = null;
-    audioEl.onended = null;
-    audioEl.onerror = null;
-    audioEl.pause();
-    audioEl.src = '';
-    audioEl = null;
-  }
-  if (audioBlobUrl) {
-    URL.revokeObjectURL(audioBlobUrl);
-    audioBlobUrl = null;
-  }
 }
 
 function startBoundaryPolling() {
@@ -521,22 +359,21 @@ function startBoundaryPolling() {
       boundaryIdx += 1;
     }
 
-    // Boundary fire: when the currently-highlighted word's char position is
-    // within BOUNDARY_LOOKAHEAD_CHARS of pageEndOffset (≈ half a line of
-    // text before the end), fire ONCE for this spread. The consumer flips +
-    // calls preloadNext; the bird arms chainNow so audio cuts as soon as
-    // preload chunks arrive.
+    // Boundary crossing (ho-13 Decision 2): the page turn is a consumer of
+    // the highlight timeline. When the highlighted word's absolute char index
+    // crosses the current spread's end (pageEndOffset = splitPoints[2S+1]),
+    // fire ONCE for this spread. The consumer flips; audio never stops. After
+    // the flip the layout raises pageEndOffset to the next spread's end, so
+    // the guard re-arms for the following boundary.
     if (
       pageEndOffset !== null &&
       pageEndOffset !== undefined &&
       pageEndOffset !== lastAdvancedFromOffset &&
       lastEmittedCharPos !== null &&
-      lastEmittedCharPos >= pageEndOffset - BOUNDARY_LOOKAHEAD_CHARS
+      lastEmittedCharPos >= pageEndOffset
     ) {
       lastAdvancedFromOffset = pageEndOffset;
       onPageBoundaryReached?.();
-      chainArmed = true;
-      tryChainNow();
     }
   }, 50);
 }
@@ -557,7 +394,7 @@ function onBirdClick() {
     resume();
     return;
   }
-  void playInternal(startOffset, untilOffset);
+  void playInternal(startOffset);
 }
 
 // ── Rate control ──────────────────────────────────────────────────────────
@@ -572,9 +409,6 @@ function setRate(n: number) {
     if (current) {
       for (const item of current.audioQueue) item.audioEl.playbackRate = clamped;
     }
-    if (preload) {
-      for (const item of preload.audioQueue) item.audioEl.playbackRate = clamped;
-    }
   }
 }
 
@@ -584,48 +418,32 @@ function changeRate(delta: number) {
 
 // ── Imperative API exposed via bind:this ──────────────────────────────────
 
-export function play(fromOffset: number, until?: number | null): Promise<void> {
-  return playInternal(fromOffset, until ?? null);
-}
-
-export function preloadNext(
-  fromOffset: number,
-  until?: number | null
-): Promise<void> {
-  if (preload) {
-    cleanupCtx(preload);
-    preload = null;
-  }
-  const slice = text.slice(fromOffset, until ?? undefined);
-  if (!slice.trim()) return Promise.resolve();
-  preload = newStreamCtx(fromOffset);
-  return startFetch(preload, slice);
+export function play(fromOffset: number): Promise<void> {
+  return playInternal(fromOffset);
 }
 
 export function pause() {
   if (phase !== 'playing') return;
+  // Set userPaused even when audioEl is null (a pause landing in a chunk gap).
+  // pumpQueue refuses to start the next chunk while it's set, so the pause
+  // holds until resume() (ho-13 Decision 4).
+  userPaused = true;
   if (audioEl) audioEl.pause();
   setPhase('paused');
 }
 
 export function resume() {
   if (phase !== 'paused') return;
-  if (audioEl) void audioEl.play();
+  userPaused = false;
   setPhase('playing');
-}
-
-export async function seekTo(
-  absCharIndex: number,
-  opts?: { play?: boolean }
-): Promise<void> {
-  const shouldPlay = opts?.play ?? true;
-  if (shouldPlay) {
-    await playInternal(absCharIndex, untilOffset);
-    return;
+  if (audioEl) {
+    // Paused mid-chunk — resume the same element.
+    void audioEl.play();
+  } else {
+    // Paused in a chunk gap — start the pending chunk now (or end if the
+    // stream drained while paused).
+    pumpQueue();
   }
-  stopAll();
-  setPhase('idle');
-  onWordHighlight?.(absCharIndex);
 }
 
 export function stop() {
