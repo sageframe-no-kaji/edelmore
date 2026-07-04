@@ -1,13 +1,13 @@
 import { SESSION_COOKIE } from '$lib/auth.js';
 import { type Database, createDb, createSession, createUser, getSession } from '$lib/db.js';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { GET } from './+server.js';
+import { POST } from './+server.js';
 
 function freshDb(): Database {
   return createDb(':memory:');
 }
 
-describe('GET /logout', () => {
+describe('POST /logout', () => {
   let db: Database;
 
   beforeEach(() => {
@@ -16,7 +16,7 @@ describe('GET /logout', () => {
 
   it('redirects to /login even with no session cookie', async () => {
     await expect(
-      GET({
+      POST({
         cookies: {
           get: () => undefined,
           delete: () => {},
@@ -37,7 +37,7 @@ describe('GET /logout', () => {
 
     const deleted: string[] = [];
     await expect(
-      GET({
+      POST({
         cookies: {
           get: (name: string) => (name === SESSION_COOKIE ? 'testsid' : undefined),
           delete: (name: string) => {

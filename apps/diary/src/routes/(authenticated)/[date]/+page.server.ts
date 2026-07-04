@@ -26,9 +26,18 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       : idx < dates.length - 1
         ? dates[idx + 1]
         : null;
-  // nextDate: the newer adjacent entry, or today if this is the most recent entry and today is later.
+  // nextDate mirrors prevDate: the nearest entry after this date (dates is DESC,
+  // so findLast gives the smallest date > params.date), or today when this is a
+  // past date with nothing later — forward nav must never dead-end. null only
+  // when the viewed date is today itself.
   const nextDate =
-    idx === -1 ? null : idx > 0 ? dates[idx - 1] : params.date < todayStr ? todayStr : null;
+    idx === -1
+      ? (dates.findLast((d) => d > params.date) ?? (params.date < todayStr ? todayStr : null))
+      : idx > 0
+        ? dates[idx - 1]
+        : params.date < todayStr
+          ? todayStr
+          : null;
 
   const entryDatePreviews = listEntryDatesWithPreview(locals.db, userId, { ascending: true });
   // Always include today so the blank page is accessible even before the first keystroke.

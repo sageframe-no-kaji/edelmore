@@ -11,6 +11,7 @@ declare global {
         font_size: number;
         journal_font: string;
         diary_title: string;
+        voice_uri: string | null;
       };
     }
   }

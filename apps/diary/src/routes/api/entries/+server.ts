@@ -1,4 +1,4 @@
-import { isValidDate } from '$lib/dates.js';
+import { isValidDate, todayIso } from '$lib/dates.js';
 import { upsertEntry } from '$lib/db.js';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
@@ -12,6 +12,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   if (typeof date !== 'string' || !isValidDate(date)) {
     error(400, 'Invalid date');
+  }
+  // The UI already forbids navigating forward past today; close the same gap
+  // at the write boundary so a crafted request can't create future entries.
+  if (date > todayIso()) {
+    error(400, 'Date is in the future');
   }
   if (typeof content !== 'string') {
     error(400, 'Content must be a string');

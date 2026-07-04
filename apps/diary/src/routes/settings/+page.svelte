@@ -34,7 +34,9 @@ const nextSize = $derived(FONT_STEPS[currentIndex + 1] ?? null);
   <header class="settings-header">
     <div class="header-links">
       <a href="/" class="back-link" aria-label="Back to diary">← Back</a>
-      <a href="/logout" class="logout-link" aria-label="Log out">Log out</a>
+      <form method="POST" action="/logout">
+        <button type="submit" class="logout-link" aria-label="Log out">Log out</button>
+      </form>
     </div>
     <h1 class="settings-title">Settings</h1>
   </header>
@@ -174,6 +176,7 @@ const nextSize = $derived(FONT_STEPS[currentIndex + 1] ?? null);
     text-decoration: none;
     letter-spacing: 0.05em;
     opacity: 0.7;
+    cursor: pointer;
     transition: opacity 0.15s, color 0.15s;
   }
 

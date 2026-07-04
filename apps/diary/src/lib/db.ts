@@ -86,8 +86,13 @@ export function applySchema(db: Database): void {
   ]) {
     try {
       db.exec(sql);
-    } catch {
-      /* column already exists */
+    } catch (err) {
+      // SQLite reports an already-applied ALTER as "duplicate column name" —
+      // the only failure the idempotent re-run may swallow. Anything else
+      // (I/O error, corrupt schema, …) must propagate.
+      if (!(err instanceof Error) || !err.message.includes('duplicate column name')) {
+        throw err;
+      }
     }
   }
 }
@@ -226,10 +231,6 @@ export function makeEntryPreview(content: unknown): string {
   const firstLine = text.split('\n')[0].trimStart();
   if (firstLine.length <= 20) return firstLine;
   return `${firstLine.slice(0, 20)}…`;
-}
-
-export function updateUserCoverId(db: Database, userId: number, coverId: string): void {
-  db.prepare('UPDATE users SET cover_id = ? WHERE id = ?').run(coverId, userId);
 }
 
 export function updateUsername(db: Database, userId: number, username: string): void {
