@@ -1,5 +1,5 @@
 import { type Database, createDb, createUser, getUserByUsername } from '$lib/db.js';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock $env/dynamic/private before importing the handlers. Mutable so tests
 // can toggle ADMIN_PIN (unset = page open for first-run bootstrap).
@@ -27,8 +27,26 @@ function makeCookies(values: Record<string, string> = {}) {
   };
 }
 
+async function unlock(pin: string, cookies = makeCookies()) {
+  const result = await actions.unlock({
+    request: { formData: async () => makeFormData({ admin_pin: pin }) },
+    cookies,
+  } as any);
+  return { result, cookies };
+}
+
+// Successful unlock mints an opaque token; read it back off the cookie write.
+async function unlockToken(): Promise<string> {
+  const { cookies } = await unlock('9999');
+  return cookies.set.mock.calls[0][1] as string;
+}
+
 beforeEach(() => {
   env.ADMIN_PIN = '9999';
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('load', () => {
@@ -43,12 +61,13 @@ describe('load', () => {
     expect(result.users).toEqual([]);
   });
 
-  it('returns user list when the admin cookie matches', async () => {
+  it('returns user list when the cookie carries a minted token', async () => {
     const db = freshDb();
     createUser(db, 'Iona', 'hash');
+    const token = await unlockToken();
     const result = (await load({
       locals: { db },
-      cookies: makeCookies({ admin_gate: '9999' }),
+      cookies: makeCookies({ admin_gate: token }),
     } as any)) as { authorized: boolean; users: { username: string }[] };
     expect(result.authorized).toBe(true);
     expect(result.users).toHaveLength(1);
@@ -64,47 +83,70 @@ describe('load', () => {
     expect(result.authorized).toBe(true);
   });
 
-  it('rejects a stale cookie from a previous PIN', async () => {
+  it('rejects a cookie value that was never minted (e.g. the raw PIN)', async () => {
     const result = (await load({
       locals: { db: freshDb() },
-      cookies: makeCookies({ admin_gate: '0000' }),
+      cookies: makeCookies({ admin_gate: '9999' }),
+    } as any)) as { authorized: boolean };
+    expect(result.authorized).toBe(false);
+  });
+
+  it('rejects an expired token', async () => {
+    // Mint the token in the past; real time is well past its 60-minute expiry.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2021-01-01T00:00:00Z'));
+    const token = await unlockToken();
+    vi.useRealTimers();
+    const result = (await load({
+      locals: { db: freshDb() },
+      cookies: makeCookies({ admin_gate: token }),
     } as any)) as { authorized: boolean };
     expect(result.authorized).toBe(false);
   });
 });
 
 describe('actions.unlock', () => {
-  it('sets the gate cookie for the correct PIN', async () => {
-    const cookies = makeCookies();
-    const result = await actions.unlock({
-      request: { formData: async () => makeFormData({ admin_pin: '9999' }) },
-      cookies,
-    } as any);
+  it('sets an opaque token cookie — never the ADMIN_PIN', async () => {
+    const { result, cookies } = await unlock('9999');
     expect(result).toMatchObject({ unlocked: true });
     expect(cookies.set).toHaveBeenCalledWith(
       'admin_gate',
-      '9999',
-      expect.objectContaining({ httpOnly: true, path: '/admin' })
+      expect.any(String),
+      expect.objectContaining({ httpOnly: true, sameSite: 'strict', path: '/admin', maxAge: 3600 })
     );
+    const token = cookies.set.mock.calls[0][1] as string;
+    expect(token).not.toBe(env.ADMIN_PIN);
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('rejects a wrong PIN', async () => {
-    const cookies = makeCookies();
-    const result = await actions.unlock({
-      request: { formData: async () => makeFormData({ admin_pin: '1111' }) },
-      cookies,
-    } as any);
+    const { result, cookies } = await unlock('1111');
     expect(result?.status).toBe(400);
     expect(cookies.set).not.toHaveBeenCalled();
   });
 
   it('rejects unlock attempts when ADMIN_PIN is unset', async () => {
     env.ADMIN_PIN = undefined;
-    const result = await actions.unlock({
-      request: { formData: async () => makeFormData({ admin_pin: '' }) },
-      cookies: makeCookies(),
-    } as any);
+    const { result } = await unlock('');
     expect(result?.status).toBe(400);
+  });
+
+  it('throttles repeated failed unlock attempts', async () => {
+    // Throttle state is module-level and shared across this file. Run this
+    // test in the past so the lockout has already expired in real time for
+    // any test that follows.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2020-01-01T00:00:00Z'));
+    await unlock('9999'); // success clears failures accumulated by earlier tests
+    for (let i = 0; i < 5; i++) {
+      const { result } = await unlock('1111');
+      expect(result?.status).toBe(400);
+    }
+    // Locked now — even the correct PIN gets the login route's failure shape.
+    const { result, cookies } = await unlock('9999');
+    expect(result?.status).toBe(429);
+    expect(result?.data).toMatchObject({ error: expect.stringContaining('Too many tries') });
+    expect(cookies.set).not.toHaveBeenCalled();
   });
 });
 
@@ -112,9 +154,9 @@ describe('actions.create', () => {
   let db: Database;
   let cookies: ReturnType<typeof makeCookies>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     db = freshDb();
-    cookies = makeCookies({ admin_gate: '9999' });
+    cookies = makeCookies({ admin_gate: await unlockToken() });
   });
 
   it('returns 403 when locked', async () => {
