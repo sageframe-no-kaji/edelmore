@@ -46,6 +46,13 @@ describe('POST /api/entries', () => {
     ).rejects.toMatchObject({ status: 400 });
   });
 
+  it('returns 400 for a future date and writes nothing', async () => {
+    await expect(
+      POST(makeEvent(db, userId, { date: '2099-12-31', content: 'From the future.' }) as any)
+    ).rejects.toMatchObject({ status: 400 });
+    expect(getEntry(db, userId, '2099-12-31')).toBeUndefined();
+  });
+
   it('returns 400 when date is missing', async () => {
     await expect(POST(makeEvent(db, userId, { content: 'Hello.' }) as any)).rejects.toMatchObject({
       status: 400,

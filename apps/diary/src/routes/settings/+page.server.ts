@@ -46,9 +46,8 @@ export const actions: Actions = {
     if (!JOURNAL_FONTS.includes(journalFont as (typeof JOURNAL_FONTS)[number])) {
       return fail(400, { error: 'Invalid journal font' });
     }
-    // Validate (and hash) the PIN here, but WRITE it after the other updates:
-    // updateUsername can still fail on uniqueness, and the save must not
-    // change the PIN while reporting an error.
+    // Validate (and hash) the PIN before the transaction — hashing is async,
+    // and better-sqlite3 transactions must stay synchronous.
     let pinHash: string | null = null;
     if (pin.length > 0 || confirm.length > 0) {
       if (!/^\d{4}$/.test(pin)) return fail(400, { error: 'PIN must be exactly 4 digits' });
@@ -56,13 +55,18 @@ export const actions: Actions = {
       pinHash = await hashPin(pin);
     }
 
+    const userId = locals.user.id;
     try {
-      updateUsername(locals.db, locals.user.id, username);
-      updateDiaryTitle(locals.db, locals.user.id, diaryTitle);
-      updateFontSize(locals.db, locals.user.id, fontSize);
-      updateJournalFont(locals.db, locals.user.id, journalFont);
-      updateVoiceUri(locals.db, locals.user.id, voiceUri);
-      if (pinHash) updatePinHash(locals.db, locals.user.id, pinHash);
+      // One transaction: a mid-sequence failure (e.g. username uniqueness)
+      // must commit none of the fields.
+      locals.db.transaction(() => {
+        updateUsername(locals.db, userId, username);
+        updateDiaryTitle(locals.db, userId, diaryTitle);
+        updateFontSize(locals.db, userId, fontSize);
+        updateJournalFont(locals.db, userId, journalFont);
+        updateVoiceUri(locals.db, userId, voiceUri);
+        if (pinHash) updatePinHash(locals.db, userId, pinHash);
+      })();
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
       if (message.includes('UNIQUE constraint failed: users.username')) {

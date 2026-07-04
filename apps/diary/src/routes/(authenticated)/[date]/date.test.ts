@@ -92,7 +92,28 @@ describe('[date] load', () => {
     const result = (await load(makeEvent('2026-05-14') as any)) as any;
     // idx === -1: prevDate = nearest real entry before 2026-05-14
     expect(result.prevDate).toBe('2026-05-13');
-    // idx === -1: nextDate = null (no entries after 2026-05-14)
+    // idx === -1, no entries after 2026-05-14: nextDate falls back to today
+    // so forward navigation never dead-ends on an entry-less past date.
+    expect(result.nextDate).toBe(todayIso());
+  });
+
+  it('returns nearest later entry as nextDate when current date has no entry', async () => {
+    upsertEntry(db, userId, '2026-05-10', 'Before.');
+    upsertEntry(db, userId, '2026-05-18', 'Nearest after.');
+    upsertEntry(db, userId, '2026-05-20', 'Further after.');
+    const result = (await load(makeEvent('2026-05-14') as any)) as any;
+    expect(result.nextDate).toBe('2026-05-18');
+  });
+
+  it('returns today as nextDate for an entry-less past date with no later entries', async () => {
+    upsertEntry(db, userId, '2026-05-10', 'Only earlier.');
+    const result = (await load(makeEvent('2026-05-14') as any)) as any;
+    expect(result.nextDate).toBe(todayIso());
+  });
+
+  it('returns null nextDate when viewing today without an entry', async () => {
+    upsertEntry(db, userId, '2026-05-10', 'Earlier.');
+    const result = (await load(makeEvent(todayIso()) as any)) as any;
     expect(result.nextDate).toBeNull();
   });
 

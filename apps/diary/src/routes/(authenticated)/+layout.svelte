@@ -1188,7 +1188,9 @@ $effect(() => {
 									{#if settingsWarning}
 										<span class="settings-warning-text">{settingsWarningText}</span>
 									{/if}
-									<a href="/logout" data-sveltekit-reload class="settings-logout-link">Log out</a>
+									<form method="POST" action="/logout" class="mr-auto">
+										<button type="submit" class="settings-logout-link">Log out</button>
+									</form>
 									<button type="button" onclick={closeSettings} class="settings-back-link">← Back</button>
 									<button type="button" onclick={saveSettings} disabled={!settingsDirty || savingSettings} class="settings-save-link">{savingSettings ? 'Saving…' : 'Save'}</button>
 								</div>
@@ -1507,7 +1509,9 @@ $effect(() => {
 					{#if settingsWarning}
 						<span class="settings-warning-text">{settingsWarningText}</span>
 					{/if}
-					<a href="/logout" data-sveltekit-reload class="settings-logout-link" aria-label="Log out">Log out</a>
+					<form method="POST" action="/logout" class="mr-auto">
+						<button type="submit" class="settings-logout-link" aria-label="Log out">Log out</button>
+					</form>
 					<button type="button" onclick={closeSettings} class="settings-back-link">← Back</button>
 					<button type="button" onclick={saveSettings} disabled={!settingsDirty || savingSettings} class="settings-save-link">{savingSettings ? 'Saving…' : 'Save'}</button>
 				</div>
@@ -1543,7 +1547,7 @@ $effect(() => {
 		font-size: 1.6rem;
 		color: #8b6914;
 		text-decoration: none;
-		margin-right: auto;
+		cursor: pointer;
 		text-shadow:
 			0 1px 2px rgba(255, 250, 230, 0.45),
 			0 -1px 0 rgba(0, 0, 0, 0.25);
