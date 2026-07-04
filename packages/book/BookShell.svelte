@@ -112,6 +112,42 @@ export async function flip(
     await mutate();
     return;
   }
+
+  // View Transitions path (Decision 1 / Decision 9). When the browser supports
+  // it, hand the page turn to startViewTransition: it snapshots the live DOM,
+  // runs mutate(), and animates OLD → NEW. No clones, no rotating wrapper, no
+  // flip-hidden — each page keeps its parent-CSS context because the browser
+  // captures it in place, which is what dissolves the clone-out-of-context
+  // artifact family. The visible animation is the browser's default crossfade
+  // for now; Phase C styles the ::view-transition pseudo-elements into the 3D
+  // book turn.
+  if (
+    typeof document !== 'undefined' &&
+    typeof document.startViewTransition === 'function'
+  ) {
+    // AT-02 / Decision 11: the try/finally invariant is preserved on this
+    // branch too. isFlipping is released whether the transition completes or
+    // mutate() rejects, and the transition owns its own pseudo-elements — there
+    // is nothing for us to strand, so cleanup is just the flag.
+    isFlipping = true;
+    try {
+      const transition = document.startViewTransition(() =>
+        Promise.resolve(mutate())
+      );
+      // finished rejects iff mutate() rejects (surfacing to the caller, AT-02);
+      // otherwise it resolves when the animation ends, holding isFlipping for
+      // the whole turn.
+      await transition.finished;
+    } finally {
+      isFlipping = false;
+    }
+    return;
+  }
+
+  // No View Transitions support: fall through to the clone-rotate path below,
+  // unchanged. (Phase E replaces this fallback with a plain `await mutate()`
+  // per Decision 9; until then the legacy animation stays as the fallback.)
+
   // Front face = OLD page being turned (forward = right; backward = left).
   // Opposite = the OLD page on the other side, which stays visible during
   // the first half of the flip (so the user sees the OLD spread until the

@@ -180,6 +180,9 @@ const {
 
 	/* Slightly different ragged vertical on each page — left page irregular at left edge */
 	.page-left {
+		/* Ho-04: each page is its own view-transition surface, so a flip animates
+		   the turning side as a distinct snapshot (Decision 2). */
+		view-transition-name: page-left;
 		border-right: 1px solid #c8b888;
 		clip-path: polygon(
 			0% 0%,
@@ -200,6 +203,8 @@ const {
 
 	/* Right page irregular at right edge */
 	.page-right {
+		/* Ho-04: view-transition surface for the right page (Decision 2). */
+		view-transition-name: page-right;
 		clip-path: polygon(
 			0% 0%,
 			calc(100% - 1px) 0%,
