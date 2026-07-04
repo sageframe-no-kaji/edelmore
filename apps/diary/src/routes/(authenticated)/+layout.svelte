@@ -417,17 +417,19 @@ function onFlipPrev() {
   }
 }
 
-// ── Bird narration — extracted to @edelmore/narration ────────────────────
+// ── Bird narration — glue for the diary-local <BirdNarrator> ──────────────
 //
-// Behaviour: state machine, audio pipeline, voice dispatch, speed control,
-// and word-boundary tracking all live inside <BirdNarrator>. The diary keeps
-// only the consumer-side glue:
-//   - the imperative handle to call play/stop from auto-advance, etc.
+// The engine (state machine, audio pipeline, voice dispatch, speed control,
+// word-boundary tracking) lives in $lib/components/BirdNarrator.svelte. Only
+// the wire adapter — types + the /api/speak fetch helpers — lives in
+// @edelmore/narration. One bird click streams the WHOLE entry in a single
+// request (ho-13); the diary keeps only the consumer-side glue:
+//   - the imperative handle to call stop from navigation, etc.
 //   - the four-phase mirror (drives birdPlaying which swaps in ReaderView)
 //   - the current-word highlight (passed to ReaderView)
-//   - the per-spread start/until offsets (snapshotted into the bird at click)
+//   - the current spread's start offset + the spread-end boundary input
 //   - the manual-flip-stops-bird effect (skipped when the flip was bird-led)
-//   - the onNarrationEnd auto-advance to the next spread
+//   - the page turn at the highlight's boundary crossing (handlePageBoundary)
 // biome-ignore lint/style/useConst: bind:this requires let
 let birdNarrator: BirdNarratorApi | null = $state(null);
 let birdPhase = $state<BirdPhase>('idle');
@@ -443,14 +445,16 @@ let currentNarrationCharIndex: number | null = $state(null);
 // stopped by its own page-turn.
 let birdInitiatedFlip = false;
 
-// Per-spread snapshot offsets, read by <BirdNarrator> when the user clicks
-// the bird from idle. Reactive so spread changes refresh the snapshot.
-// $derived.by wraps the body in a callback so TS doesn't see entryPageSpread
-// / splitPoints as referenced before their declarations further down.
+// Per-spread offsets read by <BirdNarrator>. `birdStartOffset` is where the
+// entry-long stream begins when the user clicks the bird from idle;
+// `birdPageEndOffset` is the current spread's end — the boundary the engine
+// watches the highlight cross to fire a page turn. Both reactive so spread
+// changes refresh them. $derived.by wraps the body in a callback so TS
+// doesn't see entryPageSpread / splitPoints referenced before declaration.
 const birdStartOffset = $derived.by(() =>
   entryPageSpread === 0 ? 0 : (splitPoints[entryPageSpread * 2 - 1] ?? 0)
 );
-const birdUntilOffset = $derived.by(() => splitPoints[entryPageSpread * 2 + 1] ?? null);
+const birdPageEndOffset = $derived.by(() => splitPoints[entryPageSpread * 2 + 1] ?? null);
 
 // Manual page flip (any change in entryPageSpread that didn't come from the
 // bird itself) stops playback so the next click starts fresh on whatever
@@ -467,11 +471,11 @@ $effect(() => {
   });
 });
 
-// Page-boundary handler — fires ~500ms before the current spread's audio
-// ends. We flip the page AND preload the next spread's audio so the bird
-// chains seamlessly when current playback finishes. Audio of the current
-// spread keeps playing while the flip animates; the brief silence at the
-// tail of the flip is the natural gap before chained audio resumes.
+// Page-boundary handler — fires when the highlighted word crosses the current
+// spread's end (ho-13 Decision 2). We flip the page and do nothing else: the
+// single audio stream keeps playing, and the highlight lands on the new
+// spread because its char index is simply in the next slice. birdInitiatedFlip
+// exempts this turn from the manual-flip-stops-bird effect.
 function handlePageBoundary() {
   const nextSpread = entryPageSpread + 1;
   if (nextSpread >= entrySpreadCount) return;
@@ -479,14 +483,10 @@ function handlePageBoundary() {
   void diaryFlip('forward', () => {
     entryPageSpread = nextSpread;
   });
-  const nextStart = nextSpread === 0 ? 0 : (splitPoints[nextSpread * 2 - 1] ?? 0);
-  const nextEnd = splitPoints[nextSpread * 2 + 1] ?? null;
-  void birdNarrator?.preloadNext(nextStart, nextEnd);
 }
 
-// Bird truly ended (last spread finished, nothing chained). Phase is already
-// 'idle' via onPhaseChange. The bird auto-chains spread-to-spread transitions
-// via preloadNext above, so this only fires at the end of the entry.
+// Bird truly ended (the entry's single stream drained). Phase is already
+// 'idle' via onPhaseChange. No auto-advance to the next entry — stays a no-op.
 function handleNarrationEnd() {}
 
 function handlePhaseChange(phase: BirdPhase) {
@@ -1364,8 +1364,7 @@ $effect(() => {
 										text={content}
 										voiceURI={voiceURI}
 										startOffset={birdStartOffset}
-										untilOffset={birdUntilOffset}
-										pageEndOffset={birdUntilOffset}
+										pageEndOffset={birdPageEndOffset}
 										onWordHighlight={(idx) => { currentNarrationCharIndex = idx; }}
 										onPageBoundaryReached={handlePageBoundary}
 										onNarrationEnd={handleNarrationEnd}
@@ -1946,8 +1945,8 @@ $effect(() => {
 	}
 
 	/* Bird cluster wrapper. The cluster takes the same slot the bird used to
-	   take; the BirdNarrator component (from @edelmore/narration) renders the
-	   bird, nest, and speed control inside this anchored container. */
+	   take; the diary-local BirdNarrator component renders the bird, nest, and
+	   speed control inside this anchored container. */
 	.spell-bird-cluster {
 		position: relative;
 		width: var(--spell-icon-size);
