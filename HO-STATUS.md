@@ -13,7 +13,7 @@ Last updated: 2026-07-04 (audit fix batch #12–#17 merged; reader EPUB piping #
 | Ho | Status | Notes |
 |---|---|---|
 | ho-00 → ho-07 | ✅ shipped v1.0 | See `kamae-4-ho-outline.md`. Bootstrap through homelab deploy. |
-| **ho-08 — Narration UX: chapter-continuous audio** | 📋 **filed, not opened** | Whole-entry Kokoro pivot to eliminate the page-turn pause. Opens whenever it's worth Iona's time. ⚠️ number collides with shipped ho-08 (TTS) — renumber before opening (2026-07-03 audit). |
+| **ho-13 — whole-entry narration** (renumbers the filed "ho-08" outline entry) | 🟢 **open — mechanical work merged (#24); gated on practitioner listening pass** | One stream per entry; flip at highlight crossing; chain/preload plumbing deleted. |
 | ho-11 — page-turn rewrite (View Transitions) | ↪️ superseded | Never executed; flip moved to `packages/book`. Re-filed as **reader Ho-04** (2026-07-04). |
 
 Extraction hos (Ho-01/02/03) shipped from the reader's chain, not the diary's — see below.
@@ -33,7 +33,7 @@ Extraction hos (Ho-01/02/03) shipped from the reader's chain, not the diary's �
 | Ho-01 — extract `@edelmore/design` | ✅ shipped (`078bf23`) | |
 | Ho-02 — extract `@edelmore/book` | ✅ shipped (`f29b619`) | |
 | Ho-03 — extract `@edelmore/narration` | ✅ shipped (`5f1bce1`) | Scope drift acknowledged in `hos/ho-03-extract-narration.md → Reflect`. Diary Ho-08 filed as the follow-up. |
-| **Ho-04 — page-turn rewrite (View Transitions in `@edelmore/book`)** | 🟢 **open** | Supersedes diary ho-11. Step-wise practitioner-in-browser execution; both apps are verification surfaces. `hos/ho-04-page-turn-view-transitions.md` |
+| **Ho-04 — page-turn rewrite (View Transitions in `@edelmore/book`)** | 🟢 **open — Phases A–B merged (#23); C–E are the practitioner session** | Supersedes diary ho-11. Flips are the browser's default crossfade until Phase C styles the 3D turn. `hos/ho-04-page-turn-view-transitions.md` |
 | EPUB piping (scaffold, parser, library/ingestion, pagination + dev route) | ✅ shipped (#18–#21, 2026-07-03/04) | Built from `audit/R-AT-01…04` specs ahead of the Kamae 4 re-flow, per decisions in `notes/kamae-2-followup-prep.md` §2026-07-03. Kamae 4 assigns its numbers when it updates. |
 | Ho-05+ | ⏳ awaits Kamae 2 follow-up (identity mechanic, decision 7) + Kamae 4 re-flow | |
 
@@ -46,7 +46,7 @@ Extraction hos (Ho-01/02/03) shipped from the reader's chain, not the diary's �
 | **Reader Kamae 2 follow-up** — resolve the 7 open decisions | `ho-kamae-2-system-design-collaborator` | `apps/reader/ho-process/kamae-2-edelmore-reader-system-design.md` + `notes/kamae-2-followup-prep.md` |
 | **Reader Kamae 4 update** (after Kamae 2 lands) | `ho-kamae-4-overview-collaborator` | `apps/reader/ho-process/kamae-4-ho-outline.md` |
 | **Reader Ho-04 authoring** (after Kamae 4) | `ho-kamae-5-authoring-collaborator` | reader Kamae chain |
-| **Diary Ho-08** (whole-entry narration pivot) | `ho-kamae-5-authoring-collaborator` | `apps/diary/ho-process/kamae-4-ho-outline.md` → Post-v1.0 § ho-08 |
+| **Diary ho-13 listening pass** (gates the merged whole-entry narration) | none — practitioner + browser | `apps/diary/ho-process/hos/ho-13-whole-entry-narration.md` |
 
 ---
 
