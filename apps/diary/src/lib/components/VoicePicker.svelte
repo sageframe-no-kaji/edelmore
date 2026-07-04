@@ -55,7 +55,10 @@ function buildFeaturedVoices(filter?: Set<string>): VoiceOption[] {
 // the consumer hasn't picked one.
 $effect(() => {
   if (typeof window === 'undefined') return;
-  fetch('/api/speak/voices')
+  // Abort on unmount — otherwise the late response writes state (and calls
+  // onChange) into a destroyed component.
+  const controller = new AbortController();
+  fetch('/api/speak/voices', { signal: controller.signal })
     .then(async (res) => {
       if (!res.ok) {
         serverOffline = true;
@@ -63,6 +66,7 @@ $effect(() => {
         return;
       }
       const payload = await res.json();
+      if (controller.signal.aborted) return;
       const available = new Set<string>(
         (payload.voices ?? []).map((v: { id: string }) => v.id)
       );
@@ -76,9 +80,11 @@ $effect(() => {
       seedDefaultIfNeeded();
     })
     .catch(() => {
+      if (controller.signal.aborted) return;
       serverOffline = true;
       seedDefaultIfNeeded();
     });
+  return () => controller.abort();
 });
 
 function seedDefaultIfNeeded() {
@@ -93,6 +99,23 @@ function seedDefaultIfNeeded() {
 function onSelect(e: Event) {
   const target = e.currentTarget as HTMLSelectElement;
   onChange(target.value || null);
+}
+
+// Active preview playback — plain locals (never rendered).
+let previewAudio: HTMLAudioElement | null = null;
+let previewUrl: string | null = null;
+
+function stopPreview() {
+  if (previewAudio) {
+    previewAudio.pause();
+    previewAudio.onended = null;
+    previewAudio.onerror = null;
+    previewAudio = null;
+  }
+  if (previewUrl) {
+    URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+  }
 }
 
 function previewVoice() {
@@ -114,10 +137,20 @@ function previewVoice() {
         return;
       }
       if (!chunk.audio || !chunk.format) return;
+      // One preview at a time — stop the prior playback and revoke its URL.
+      stopPreview();
       const url = audioBlobUrlFromBase64(chunk.audio, chunk.format);
       const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      void audio.play();
+      previewAudio = audio;
+      previewUrl = url;
+      // Revoke on every exit path — ended, decode error, or play() rejection —
+      // so the blob URL never leaks. Guarded so a newer preview isn't torn down.
+      const release = () => {
+        if (previewAudio === audio) stopPreview();
+      };
+      audio.onended = release;
+      audio.onerror = release;
+      audio.play().catch(release);
     })
     .catch(() => {
       // Preview failure is silent — cosmetic.

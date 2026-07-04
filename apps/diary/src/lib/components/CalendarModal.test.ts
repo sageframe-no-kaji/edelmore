@@ -83,6 +83,49 @@ describe('CalendarModal', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it('calls onClose exactly once when Escape is pressed with focus inside the dialog', async () => {
+    const onClose = vi.fn();
+    render(CalendarModal, { ...baseProps, onClose });
+    await fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('focuses the dialog on open', () => {
+    render(CalendarModal, baseProps);
+    expect(document.activeElement).toBe(screen.getByRole('dialog'));
+  });
+
+  it('restores focus to the previously focused element on close', () => {
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+    const { unmount } = render(CalendarModal, baseProps);
+    expect(document.activeElement).toBe(screen.getByRole('dialog'));
+    unmount();
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+
+  it('clamps previous-month navigation at the minimum year', async () => {
+    render(CalendarModal, { ...baseProps, currentDate: '2026-01-15' });
+    const minYear = 2026 - 5;
+    const yearSelect = screen.getByRole('combobox', { name: 'Year' }) as HTMLSelectElement;
+    await userEvent.selectOptions(yearSelect, String(minYear));
+    await userEvent.click(screen.getByRole('button', { name: 'Previous month' }));
+    expect(screen.getByText('January')).toBeTruthy();
+    expect(yearSelect.value).toBe(String(minYear));
+  });
+
+  it('clamps next-month navigation at the maximum year', async () => {
+    render(CalendarModal, { ...baseProps, currentDate: '2026-12-01' });
+    const maxYear = new Date().getUTCFullYear() + 5;
+    const yearSelect = screen.getByRole('combobox', { name: 'Year' }) as HTMLSelectElement;
+    await userEvent.selectOptions(yearSelect, String(maxYear));
+    await userEvent.click(screen.getByRole('button', { name: 'Next month' }));
+    expect(screen.getByText('December')).toBeTruthy();
+    expect(yearSelect.value).toBe(String(maxYear));
+  });
+
   it('changes the displayed year via the year select', async () => {
     render(CalendarModal, baseProps);
     const yearSelect = screen.getByRole('combobox', { name: 'Year' }) as HTMLSelectElement;

@@ -16,6 +16,10 @@ let elapsedTimer: ReturnType<typeof setInterval> | null = null;
 let cancelled = false;
 let starting = false;
 let activeInsert: ((text: string) => void) | null = null;
+// Identity token of the instance that started the active recording. The
+// shared store deliberately mirrors one recording across every mounted quill;
+// ownership only decides which instance's unmount must tear the recording down.
+let owner: object | null = null;
 
 const MAX_SECONDS = 90;
 const HOLD_CANCEL_MS = 800;
@@ -28,18 +32,44 @@ function clearElapsedTimer() {
   }
 }
 
+let errorResetTimer: ReturnType<typeof setTimeout> | null = null;
+
 function showError(message: string) {
   micState.set({ phase: 'error', errorMessage: message, elapsed: get(micState).elapsed });
-  setTimeout(() => {
+  // Restart the reset clock on every error — a second error within the
+  // display window must not be dismissed early by the first error's timer.
+  if (errorResetTimer) clearTimeout(errorResetTimer);
+  errorResetTimer = setTimeout(() => {
+    errorResetTimer = null;
     if (get(micState).phase === 'error') {
       micState.set({ phase: 'idle', errorMessage: '', elapsed: 0 });
     }
   }, ERROR_DISPLAY_MS);
 }
 
-async function start(insert: (text: string) => void, onstart?: () => void) {
+/** Instance-unmount hook: if `token` owns the active recording, cancel it so
+ * the mic doesn't stay hot and the transcription can't be inserted into a
+ * destroyed component. Non-owners leave the shared state alone. */
+function releaseOwnership(token: object) {
+  if (owner !== token) return;
+  owner = null;
+  // The owner's textarea is gone — a late transcription has nowhere to land.
+  activeInsert = null;
+  const phase = get(micState).phase;
+  if (phase === 'recording') {
+    cancelled = true;
+    // Stops the recorder and its tracks, clears the elapsed timer, and
+    // resets the shared state to idle (cancelled path).
+    void stopAndProcess();
+  } else if (phase === 'processing') {
+    cancelled = true;
+  }
+}
+
+async function start(insert: (text: string) => void, token: object, onstart?: () => void) {
   if (starting || get(micState).phase !== 'idle') return;
   starting = true;
+  owner = token;
   activeInsert = insert;
   cancelled = false;
   chunks = [];
@@ -160,6 +190,8 @@ async function stopAndProcess() {
 </script>
 
 <script lang="ts">
+import { onDestroy } from 'svelte';
+
 type Props = {
   oninsert: (text: string) => void;
   /** Called the moment recording begins — the host captures the insertion anchor here. */
@@ -170,9 +202,16 @@ type Props = {
 
 const { oninsert, onstart, ariaLabel }: Props = $props();
 
+// This instance's identity for recording ownership (see module script).
+const ownerToken = {};
+onDestroy(() => releaseOwnership(ownerToken));
+
 let holdTimer: ReturnType<typeof setTimeout> | null = null;
-// Swallows the synthetic click that follows a hold-to-cancel release.
-let suppressClick = false;
+// Swallows the synthetic click that follows a hold-to-cancel release. An
+// expiry timestamp, not a latch: if the release lands off-button no click
+// ever arrives, and a latch would swallow the NEXT genuine tap instead.
+const CLICK_SUPPRESS_MS = 350;
+let suppressClickUntil = 0;
 
 function onPointerDown() {
   if (get(micState).phase !== 'recording') return;
@@ -181,7 +220,7 @@ function onPointerDown() {
     // The finger release after a hold-cancel still fires a synthetic click;
     // if it lands after phase returns to 'idle', onClick would immediately
     // start a NEW recording the user just cancelled. Swallow that click.
-    suppressClick = true;
+    suppressClickUntil = Date.now() + CLICK_SUPPRESS_MS;
     void stopAndProcess();
     holdTimer = null;
   }, HOLD_CANCEL_MS);
@@ -195,12 +234,12 @@ function onPointerUp() {
 }
 
 function onClick() {
-  if (suppressClick) {
-    suppressClick = false;
+  if (Date.now() < suppressClickUntil) {
+    suppressClickUntil = 0;
     return;
   }
   const phase = get(micState).phase;
-  if (phase === 'idle') void start(oninsert, onstart);
+  if (phase === 'idle') void start(oninsert, ownerToken, onstart);
   else if (phase === 'recording') void stopAndProcess();
 }
 
@@ -218,6 +257,7 @@ const showCountdown = $derived(($micState.phase as State) === 'recording' && rem
   onpointerdown={onPointerDown}
   onpointerup={onPointerUp}
   onpointerleave={onPointerUp}
+  onpointercancel={onPointerUp}
   aria-label={$micState.phase === 'idle'
     ? (ariaLabel ?? 'Start voice writing')
     : $micState.phase === 'recording'
@@ -248,12 +288,16 @@ const showCountdown = $derived(($micState.phase as State) === 'recording' && rem
   {#if showCountdown}
     <span class="elapsed">{remaining}s</span>
   {/if}
+  {#if $micState.phase === 'error'}
+    <span class="mic-error" role="status" aria-live="polite">{$micState.errorMessage}</span>
+  {/if}
 </button>
 
 <style>
   .mic-quill {
     /* Fill the wrapper slot exactly — the wrapper sets the size (3.6cqi
        in the ribbon, 1.5rem on mobile). */
+    position: relative;
     width: 100%;
     height: 100%;
     background: transparent;
@@ -352,5 +396,27 @@ const showCountdown = $derived(($micState.phase as State) === 'recording' && rem
     font-size: 1.4cqi;
     color: #c0392b;
     white-space: nowrap;
+  }
+
+  /* Error message — same visual language as the ribbon tooltips
+     (cream card, gold border, Rouge Script), anchored below the quill. */
+  .mic-error {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Rouge Script', cursive;
+    font-size: 1rem;
+    line-height: 1.25;
+    color: #b85050;
+    background: rgba(254, 252, 247, 0.96);
+    border: 1px solid #dfc9a4;
+    padding: 0.12rem 0.55rem;
+    border-radius: 0.3rem;
+    width: max-content;
+    max-width: 16rem;
+    text-align: center;
+    pointer-events: none;
+    z-index: 40;
   }
 </style>

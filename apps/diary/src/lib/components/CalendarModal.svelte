@@ -1,6 +1,6 @@
 <script lang="ts">
 import { DAY_LABELS, MONTH_NAMES, getCalendarDays, nextMonth, prevMonth } from '$lib/calendar.js';
-import { untrack } from 'svelte';
+import { onMount, untrack } from 'svelte';
 
 type Props = {
   entryDates: Set<string>;
@@ -17,23 +17,37 @@ const initMonth = untrack(() => Number(currentDate.slice(5, 7)) - 1);
 
 let viewYear = $state(initYear);
 let viewMonth = $state(initMonth);
+// biome-ignore lint/style/useConst: $state with bind:this — Svelte assigns via binding
+let dialogEl: HTMLDivElement | null = $state(null);
 
 const minYear = initYear - 5;
 const maxYear = new Date().getUTCFullYear() + 5;
 const yearOptions = Array.from({ length: maxYear - minYear + 1 }, (_, i) => minYear + i);
 
+// Focus the dialog on open; restore focus to the opener on close.
+onMount(() => {
+  const previouslyFocused =
+    document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  dialogEl?.focus();
+  return () => previouslyFocused?.focus();
+});
+
 function days() {
   return getCalendarDays(viewYear, viewMonth);
 }
 
+// Month navigation clamps to [minYear, maxYear] so the year <select> never
+// lands on a year it has no <option> for (an empty selection).
 function goPrevMonth() {
   const p = prevMonth(viewYear, viewMonth);
+  if (p.year < minYear) return;
   viewYear = p.year;
   viewMonth = p.month;
 }
 
 function goNextMonth() {
   const n = nextMonth(viewYear, viewMonth);
+  if (n.year > maxYear) return;
   viewYear = n.year;
   viewMonth = n.month;
 }
@@ -48,7 +62,12 @@ function navigateTo(date: string) {
 }
 
 function handleKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Escape') onClose();
+  if (e.key === 'Escape') {
+    // One close per keypress: when focus is inside the dialog the event would
+    // bubble to the window handler and call onClose() a second time.
+    e.stopPropagation();
+    onClose();
+  }
 }
 </script>
 
@@ -56,6 +75,7 @@ function handleKeyDown(e: KeyboardEvent) {
 
 <!-- Backdrop -->
 <div
+  bind:this={dialogEl}
   role="dialog"
   aria-modal="true"
   aria-label="Calendar"

@@ -28,6 +28,7 @@ function selectUser(name: string) {
 						{#each data.users as user}
 							<button
 								type="button"
+								aria-pressed={selectedUser === user.username}
 								class="flex-1 min-w-24 rounded-sm border px-4 py-2 font-serif text-sm transition-colors
 									{selectedUser === user.username
 									? 'border-ornament-gold bg-ornament-gold text-cream-50'
@@ -55,6 +56,7 @@ function selectUser(name: string) {
 						inputmode="numeric"
 						maxlength="4"
 						autocomplete="off"
+						aria-label="4-digit PIN"
 						bind:value={pin}
 						class="w-full rounded-sm border border-cream-300 bg-cream-50 px-3 py-3 text-center font-mono text-2xl tracking-[0.5em] text-ink-900 focus:border-ornament-gold focus:outline-none"
 					/>

@@ -20,13 +20,17 @@ const orderedEntries = $derived(
   [...entries].sort((left, right) => right.entry_date.localeCompare(left.entry_date))
 );
 
-function updateVisibleCount() {
+async function updateVisibleCount() {
+  if (!pageEl || !listEl) return;
+  // Reset-then-measure (CoverPage pattern): render the full list first so the
+  // measurement sees every item. Measuring only the currently rendered slice
+  // can only ever shrink the count — it never recovers after the container
+  // grows, and never reflects newly added entries.
+  visibleCount = orderedEntries.length;
+  await tick();
   if (!pageEl || !listEl) return;
   const availableHeight = listEl.clientHeight;
-  if (availableHeight <= 0) {
-    visibleCount = orderedEntries.length;
-    return;
-  }
+  if (availableHeight <= 0) return;
 
   const items = Array.from(listEl.children) as HTMLElement[];
   let nextVisibleCount = 0;

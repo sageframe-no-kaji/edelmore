@@ -1,6 +1,25 @@
+// @vitest-environment happy-dom
 import { type Database, createDb, createUser, getUserById } from '$lib/db.js';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { cleanup, render, screen, waitFor } from '@testing-library/svelte';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { actions, load } from './+page.server.js';
+import SettingsPage from './+page.svelte';
+
+// Capture the enhance registrations so the stepper's submit callbacks can be
+// driven directly with synthetic action results.
+const { enhanceForms } = vi.hoisted(() => ({
+  enhanceForms: [] as Array<{
+    form: HTMLFormElement;
+    submit?: (input: Record<string, unknown>) => unknown;
+  }>,
+}));
+
+vi.mock('$app/forms', () => ({
+  enhance: (form: HTMLFormElement, submit?: (input: Record<string, unknown>) => unknown) => {
+    enhanceForms.push({ form, submit });
+    return {};
+  },
+}));
 
 function freshDb(): Database {
   return createDb(':memory:');
@@ -350,6 +369,57 @@ describe('actions.updateFontSize', () => {
     } as any);
     expect(result?.success).toBe(true);
     expect(getUserById(db, userId)?.font_size).toBe(4.4);
+  });
+});
+
+describe('size stepper (component)', () => {
+  beforeEach(() => {
+    enhanceForms.length = 0;
+  });
+  afterEach(() => cleanup());
+
+  type StepCallback = (input: {
+    result: { type: string; status?: number };
+    update: () => Promise<void>;
+  }) => Promise<void>;
+
+  function renderStepper() {
+    render(SettingsPage, {
+      props: {
+        data: {
+          username: 'Iona',
+          diary_title: 'D I A R Y',
+          font_size: 3.2,
+          journal_font: 'eb-garamond',
+        },
+      } as any,
+    });
+    const stepForms = enhanceForms.filter(
+      ({ form }) => form.getAttribute('action') === '?/updateFontSize'
+    );
+    expect(stepForms).toHaveLength(2);
+    // [0] is the decrease form, [1] the increase form (DOM order).
+    return stepForms;
+  }
+
+  it('keeps showing the persisted size when the save action fails', async () => {
+    const [, increase] = renderStepper();
+    expect(screen.getByText('3 / 6')).toBeTruthy();
+
+    const callback = increase.submit?.({}) as StepCallback;
+    await callback({ result: { type: 'failure', status: 400 }, update: vi.fn(async () => {}) });
+
+    expect(screen.getByText('3 / 6')).toBeTruthy();
+  });
+
+  it('advances the size label when the save action succeeds', async () => {
+    const [, increase] = renderStepper();
+    expect(screen.getByText('3 / 6')).toBeTruthy();
+
+    const callback = increase.submit?.({}) as StepCallback;
+    await callback({ result: { type: 'success' }, update: vi.fn(async () => {}) });
+
+    await waitFor(() => expect(screen.getByText('4 / 6')).toBeTruthy());
   });
 });
 

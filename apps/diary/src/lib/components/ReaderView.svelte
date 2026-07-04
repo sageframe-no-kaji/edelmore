@@ -17,28 +17,36 @@ let {
 const tokens = $derived(tokenize(text));
 let containerEl: HTMLDivElement | undefined = $state();
 let currentSpanIndex = $state(-1);
+// Plain local mirror of currentSpanIndex for change detection inside the
+// effect — reading the $state there would make the effect depend on the very
+// value it assigns, retriggering itself on every write.
+let prevSpanIndex = -1;
 
 $effect(() => {
   if (currentCharIndex === null) {
+    prevSpanIndex = -1;
     currentSpanIndex = -1;
     return;
   }
   const localCharIndex = currentCharIndex - sliceStart;
   if (localCharIndex < 0 || localCharIndex >= text.length) {
+    prevSpanIndex = -1;
     currentSpanIndex = -1;
     return;
   }
   const idx = findWordIndex(tokens, localCharIndex);
-  if (idx !== currentSpanIndex) {
+  if (idx !== prevSpanIndex) {
+    prevSpanIndex = idx;
     currentSpanIndex = idx;
-    void scrollCurrentIntoView();
+    void scrollCurrentIntoView(idx);
   }
 });
 
-async function scrollCurrentIntoView() {
-  if (currentSpanIndex < 0 || !containerEl) return;
+async function scrollCurrentIntoView(idx: number) {
+  if (idx < 0) return;
   await tick();
-  const span = containerEl.querySelector(`[data-tok-idx="${currentSpanIndex}"]`);
+  if (!containerEl) return;
+  const span = containerEl.querySelector(`[data-tok-idx="${idx}"]`);
   if (span && 'scrollIntoView' in span) {
     (span as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
   }

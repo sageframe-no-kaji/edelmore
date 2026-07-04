@@ -1,7 +1,11 @@
+// @vitest-environment happy-dom
 import { hashPin } from '$lib/auth.js';
 import { type Database, createDb, createUser, getSession } from '$lib/db.js';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/svelte';
+import { userEvent } from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { actions, load } from './+page.server.js';
+import LoginPage from './+page.svelte';
 
 function freshDb(): Database {
   return createDb(':memory:');
@@ -133,5 +137,32 @@ describe('actions.default', () => {
     const session = getSession(db, sessionId);
     expect(session).toBeDefined();
     expect(session?.user_id).toBe(1);
+  });
+});
+
+describe('login page (component)', () => {
+  afterEach(() => cleanup());
+
+  function renderPage(users: Array<{ username: string }>) {
+    return render(LoginPage, {
+      props: { data: { users }, form: null } as any,
+    });
+  }
+
+  it('gives the PIN input an accessible name', () => {
+    renderPage([{ username: 'Iona' }]);
+    expect(screen.getByLabelText('4-digit PIN')).toBeTruthy();
+  });
+
+  it('marks the selected user button with aria-pressed', async () => {
+    renderPage([{ username: 'Iona' }, { username: 'Isla' }]);
+    const iona = screen.getByRole('button', { name: 'Iona' });
+    const isla = screen.getByRole('button', { name: 'Isla' });
+    expect(iona.getAttribute('aria-pressed')).toBe('true');
+    expect(isla.getAttribute('aria-pressed')).toBe('false');
+
+    await userEvent.click(isla);
+    expect(isla.getAttribute('aria-pressed')).toBe('true');
+    expect(iona.getAttribute('aria-pressed')).toBe('false');
   });
 });
