@@ -13,12 +13,6 @@ export interface WordTiming {
   char_end: number; // offset into the submitted text (exclusive)
 }
 
-export interface SpeakResponse {
-  audio: string; // base64-encoded audio (no data-URL prefix)
-  format: string; // MIME type, e.g. "audio/mpeg"
-  words: WordTiming[];
-}
-
 /**
  * One normalized chunk from the streaming /api/speak NDJSON response.
  * Each line of the response body deserializes to this shape.
@@ -27,7 +21,10 @@ export interface StreamChunk {
   audio: string; // base64-encoded audio for this chunk
   format: string; // MIME type, e.g. "audio/mpeg"
   words: WordTiming[]; // timings relative to the full submitted text (char offsets)
-  audioOffset: number; // absolute audio time (seconds) at the start of this chunk
+  // Absolute audio time (seconds) at the start of this chunk. When a chunk
+  // arrives with no timestamps, the previous chunk's offset is carried
+  // forward — the value is monotonic and never snaps back to zero mid-stream.
+  audioOffset: number;
 }
 
 /**
@@ -40,7 +37,7 @@ export interface StreamChunk {
  */
 export function isKokoroVoiceUri(uri: string | null | undefined): boolean {
   if (!uri) return false;
-  return /^[a-z]+_[a-z]+$/i.test(uri);
+  return /^[a-z]+_[a-z]+$/.test(uri);
 }
 
 /**
