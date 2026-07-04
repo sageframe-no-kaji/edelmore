@@ -31,4 +31,17 @@ describe('(authenticated) root', () => {
     expect(result.entryDatePreviews).toHaveLength(2);
     expect(result.entryDatePreviews[0].entry_date).toBe('2026-05-13');
   });
+
+  it('redirects to /login when unauthenticated, without touching the db', async () => {
+    // Page loads run concurrently with the layout guard, so the page must
+    // guard itself. The proxy proves no DB call happens before the redirect.
+    const throwingDb = new Proxy({} as Database, {
+      get() {
+        throw new Error('db must not be touched for unauthenticated requests');
+      },
+    });
+    await expect(
+      load({ locals: { db: throwingDb, user: undefined } } as any)
+    ).rejects.toMatchObject({ status: 303, location: '/login' });
+  });
 });

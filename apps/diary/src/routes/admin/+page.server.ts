@@ -1,6 +1,8 @@
+import { randomBytes } from 'node:crypto';
 import { env } from '$env/dynamic/private';
 import { hashPin } from '$lib/auth.js';
 import { createUser, listUsers } from '$lib/db.js';
+import { createThrottle } from '$lib/throttle.js';
 import { fail } from '@sveltejs/kit';
 import type { Cookies } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
@@ -12,10 +14,24 @@ import type { Actions, PageServerLoad } from './$types';
 const ADMIN_COOKIE = 'admin_gate';
 const ADMIN_UNLOCK_MINUTES = 60;
 
+// 5 straight failures → 60s lockout, same knob as the login throttle. The
+// unlock form has no username, so every attempt counts against one key.
+const adminThrottle = createThrottle();
+const ADMIN_THROTTLE_KEY = 'admin';
+
+// Successful unlocks mint an opaque random token; the cookie carries the
+// token, never the PIN. Token → expiry (ms). In-memory is deliberate — a
+// restart invalidating admin sessions is acceptable and expected.
+const adminTokens = new Map<string, number>();
+
 function adminAuthorized(cookies: Cookies): boolean {
-  const pin = env.ADMIN_PIN;
-  if (!pin) return true;
-  return cookies.get(ADMIN_COOKIE) === pin;
+  if (!env.ADMIN_PIN) return true;
+  const now = Date.now();
+  for (const [token, expiry] of adminTokens) {
+    if (expiry <= now) adminTokens.delete(token);
+  }
+  const token = cookies.get(ADMIN_COOKIE);
+  return token !== undefined && adminTokens.has(token);
 }
 
 export const load: PageServerLoad = async ({ locals, cookies }) => {
@@ -29,10 +45,18 @@ export const actions: Actions = {
   unlock: async ({ request, cookies }) => {
     const data = await request.formData();
     const pin = data.get('admin_pin')?.toString() ?? '';
+    if (adminThrottle.isLocked(ADMIN_THROTTLE_KEY)) {
+      return fail(429, { error: 'Too many tries — wait a minute, then try again' });
+    }
     if (!env.ADMIN_PIN || pin !== env.ADMIN_PIN) {
+      adminThrottle.recordFailure(ADMIN_THROTTLE_KEY);
       return fail(400, { error: 'Wrong PIN' });
     }
-    cookies.set(ADMIN_COOKIE, pin, {
+    adminThrottle.recordSuccess(ADMIN_THROTTLE_KEY);
+
+    const token = randomBytes(32).toString('hex');
+    adminTokens.set(token, Date.now() + ADMIN_UNLOCK_MINUTES * 60 * 1000);
+    cookies.set(ADMIN_COOKIE, token, {
       path: '/admin',
       httpOnly: true,
       sameSite: 'strict',

@@ -4,11 +4,14 @@ import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
+  // Layout and page loads run concurrently in SvelteKit — the layout guard
+  // does not run first, so guard here before touching the DB.
+  if (!locals.user) redirect(303, '/login');
+  const userId = locals.user.id;
+
   const todayStr = todayIso();
   if (!isValidDate(params.date) || params.date > todayStr) redirect(302, `/${todayStr}`);
 
-  // biome-ignore lint/style/noNonNullAssertion: layout guard guarantees user is present
-  const userId = locals.user!.id;
   const entry = getEntry(locals.db, userId, params.date);
 
   // prevDate/nextDate are adjacent diary entries, not calendar days.
