@@ -26,6 +26,7 @@
       ".svelte-kit/**",
       "build/**",
       "coverage/**",
+      "data/**",
       "node_modules/**",
       "static/**",
       "**/*.svelte"
