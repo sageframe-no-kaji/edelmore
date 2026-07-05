@@ -1922,6 +1922,12 @@ $effect(() => {
 		z-index: 35;
 		width: 28cqi;
 		height: 22cqi;
+		/* Own view-transition group: the pages are named groups whose snapshots
+		   paint above the root layer during a flip; without a name of its own,
+		   the overhanging quill sits in the root layer and gets covered for the
+		   duration of every transition — the "feather flash". A named group
+		   captured later in DOM order paints above the pages. */
+		view-transition-name: mic-quill;
 	}
 
 	.page-mic-quill :global(.mic-quill) {
