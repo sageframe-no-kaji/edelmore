@@ -46,3 +46,25 @@
 .flip-hidden {
   visibility: hidden !important;
 }
+
+/* ── View Transitions (reader Ho-04) ─────────────────────────────────────── */
+
+/* The shell chrome (leather frame fade, page-stack widths, seam, shadow
+ * backdrop) has its own hand-tuned 700ms CSS transitions. The default root
+ * crossfade fights them — a static old-snapshot blending against a live
+ * document that is mid-transition produces the open/close flashing. Disable
+ * the root animation entirely: only the named groups (the pages, plus any
+ * consumer-named overlays) animate; everything else stays live and keeps its
+ * own transitions, exactly as before the View Transitions path existed. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+/* The gutter seam sits above the spread. Page snapshots paint above the root
+ * layer during a transition; without its own group the seam is buried for the
+ * duration of every turn. Captured after the pages in DOM order, so its group
+ * paints above them. */
+.shell-seam {
+  view-transition-name: shell-seam;
+}
