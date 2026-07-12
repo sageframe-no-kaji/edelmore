@@ -1,0 +1,89 @@
+{
+  "keisaku": 1,
+  "works": [
+    {
+      "id": "edelmore-reader",
+      "name": "Edelmore Reader",
+      "hero": "A book that reads itself to you — on your own machine.",
+      "importance": 4,
+      "featured": false,
+      "group": "adaptive-tools",
+      "themes": [
+        "agency",
+        "attention"
+      ],
+      "sort_order_within_group": 20,
+      "tags": [
+        "software",
+        "adaptive-tool",
+        "udl",
+        "ebook-reader",
+        "epub",
+        "read-along",
+        "tts",
+        "accessibility",
+        "personal"
+      ],
+      "media": [
+        "software"
+      ],
+      "status": "scaffolded",
+      "repo": "git@github-no-kaji:sageframe-no-kaji/edelmore.git",
+      "deployment": [
+        {
+          "label": "GitHub repo",
+          "url": "https://github.com/sageframe-no-kaji/edelmore-reader"
+        }
+      ],
+      "tech_stack": "JavaScript (@edelmore/book, @edelmore/design, @edelmore/narration, better-sqlite3, fast-xml-parser, jszip)",
+      "created": "2026-06-14",
+      "last_updated": "2026-07-04",
+      "conceived": "2026-06-14",
+      "personal_stake": "For a kid who hears stories better than she reads them — and for anyone who wants reading to feel like the thing it used to be.",
+      "short_description": "A self-hosted read-along EPUB reader that feels like a real book. Upload an EPUB or pick from a built-in library of public-domain children's books; the book opens where you left off, a songbird in the margin reads it aloud in a warm voice, and each word glows softly as it's spoken. Pages turn when the narration reaches the end of the page; the book remembers your place. Built for kids who hear stories better than they read them. Sibling project to Edelmore Diary, sharing its book metaphor, narration stack, and cottage-core identity; gated on the diary's refactor into shared modules. Seed committed, no code yet.",
+      "substantive_description": [
+        "Read-along ebook readers exist, and the technical problem — parsing EPUB, generating speech, highlighting words as they're spoken — is solved many times over. What none of them solve is the experience: every one feels like reading software, utilitarian and clinical, with no spatial sense of where you are in the book. For a kid with ataxia, dyslexia, attention differences, or just a preference for being read to, the gap between 'software that reads at you' and 'a book that's also reading itself to you' is the gap between using a tool and inhabiting an experience.",
+        "Edelmore Reader's differentiator isn't the technology — it's that the book metaphor is the product. The page turn, the warm serif typography, the soft green word-glow; the audio narration is one ingredient inside a larger reading experience, not the feature. It is the same warmth the diary built for writing, applied to published content — accessibility tools made to look like things people actually want to use."
+      ],
+      "images": {
+        "gallery": []
+      },
+      "relationships": [
+        {
+          "edge_class": "narrative",
+          "target": "edelmore-diary",
+          "type": "descends_from",
+          "note": "The sibling fork: reuses the diary's book metaphor, narration stack, visual identity, and deployment pattern; swaps the content model (diary entries → book chapters)."
+        }
+      ],
+      "_keisaku": {
+        "generated_at": "2026-07-12T10:36:26",
+        "generator_version": "1",
+        "sources": {
+          "readme": "README.md",
+          "manifest": "package.json"
+        },
+        "derived_defaults": {
+          "id": "reader",
+          "name": "Edelmore Reader",
+          "media": [
+            "software"
+          ],
+          "created": "2026-06-19",
+          "tags": [
+            "javascript",
+            "edelmore-book",
+            "edelmore-design",
+            "edelmore-narration",
+            "better-sqlite3",
+            "fast-xml-parser",
+            "jszip"
+          ]
+        },
+        "contract_issues": [
+          "no-contract-source"
+        ]
+      }
+    }
+  ]
+}

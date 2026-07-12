@@ -1,0 +1,87 @@
+{
+  "keisaku": 1,
+  "works": [
+    {
+      "id": "edelmore-diary",
+      "name": "Edelmore Diary",
+      "hero": "A cottage-core diary for a child — kept on your own machine.",
+      "importance": 5,
+      "featured": false,
+      "group": "adaptive-tools",
+      "themes": [
+        "agency",
+        "sovereignty"
+      ],
+      "sort_order_within_group": 10,
+      "tags": [
+        "software",
+        "adaptive-tool",
+        "udl",
+        "diary",
+        "voice-transcription",
+        "read-aloud",
+        "homelab",
+        "personal"
+      ],
+      "media": [
+        "software"
+      ],
+      "status": "shipped",
+      "repo": "git@github-no-kaji:sageframe-no-kaji/edelmore.git",
+      "deployment": [
+        {
+          "label": "GitHub repo",
+          "url": "https://github.com/sageframe-no-kaji/edelmore-diary"
+        },
+        {
+          "label": "Container image (GHCR)",
+          "url": "https://ghcr.io/sageframe-no-kaji/edelmore-diary"
+        },
+        {
+          "label": "Live demo",
+          "url": "https://edelmore.sageframe.net"
+        }
+      ],
+      "tech_stack": "JavaScript (@edelmore/book, @edelmore/design, @edelmore/narration, argon2, better-sqlite3)",
+      "created": "2026-05-14",
+      "last_updated": "2026-07-05",
+      "conceived": "2026-05-14",
+      "personal_stake": "Built for Iona, who wanted to keep an Anne Frank–style diary on her own terms — and for her sisters Ada and Isla.",
+      "short_description": "A private web diary shaped like a book. It opens to today's page. Pages turn. Voice transcription handles the writing for hands that struggle with the keyboard, and it can read entries back aloud with the words highlighted as they're spoken. Runs on a parent's homelab, behind Tailscale and the home LAN, and nobody reads it but the person who wrote it. Built as an adaptive tool — for kids who have trouble writing — on Universal Design for Learning principles.",
+      "substantive_description": [
+        "Adaptive tools are usually designed apologetically — accommodation as patch, accessibility as afterthought. Edelmore is built from the opposite direction. Universal Design for Learning means the design itself accommodates without naming the accommodation. A diary that opens to today's page and turns its pages and accepts voice as easily as typing isn't a diary for kids with writing difficulties. It's a diary.",
+        "The deeper argument is that scale-of-one design is a legitimate design target. A tool built for one specific 13-year-old, in the shape of a book the child imagined, deployed on her parent's homelab behind Tailscale, is not a small project. It's a complete project at the scale it was meant for. The economics of mass-market software training has obscured this — every tool is supposed to scale to millions or it doesn't count. Edelmore is what one tool, made for one person, looks like when it counts."
+      ],
+      "images": {
+        "gallery": []
+      },
+      "_keisaku": {
+        "generated_at": "2026-07-12T10:36:26",
+        "generator_version": "1",
+        "sources": {
+          "readme": "README.md",
+          "manifest": "package.json"
+        },
+        "derived_defaults": {
+          "id": "diary",
+          "name": "Edelmore Diary",
+          "media": [
+            "software"
+          ],
+          "created": "2026-06-19",
+          "tags": [
+            "javascript",
+            "edelmore-book",
+            "edelmore-design",
+            "edelmore-narration",
+            "argon2",
+            "better-sqlite3"
+          ]
+        },
+        "contract_issues": [
+          "no-contract-source"
+        ]
+      }
+    }
+  ]
+}
