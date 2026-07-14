@@ -1,0 +1,7 @@
+# Edelmore Reader — description
+
+A self-hosted read-along EPUB reader that feels like a real book — a songbird in the margin reads aloud while each word glows as it is spoken.
+
+Read-along ebook readers exist, and the technical problem — parsing EPUB, generating speech, highlighting words as they are spoken — is solved many times over. What none of them solve is the experience: every one feels like reading software, utilitarian and clinical, with no spatial sense of where you are in the book. Edelmore Reader's differentiator is not the technology but that the book metaphor is the product — the page turn, the warm serif typography, the soft green word-glow, with narration as one ingredient inside a larger reading experience rather than the feature. You upload an EPUB or pick from a built-in library of public-domain children's books; the book opens where you left off, turns its pages when the narration reaches the end of one, and remembers your place. It is the sibling of Edelmore Diary — reusing its book metaphor, narration stack, and cottage-core identity, gated on the diary's refactor into shared modules — built for kids who hear stories better than they read them.
+
+Planned stack: SvelteKit (TypeScript), SQLite via better-sqlite3, server-side EPUB parsing, CSS multi-column pagination, View Transitions page-turns, self-hosted Kokoro TTS, Tailwind v4, and Docker. Scaffolded — seed committed, no code yet.
