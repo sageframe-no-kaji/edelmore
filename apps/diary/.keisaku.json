@@ -44,7 +44,7 @@
       ],
       "tech_stack": "JavaScript (@edelmore/book, @edelmore/design, @edelmore/narration, argon2, better-sqlite3)",
       "created": "2026-05-14",
-      "last_updated": "2026-07-05",
+      "last_updated": "2026-07-14",
       "conceived": "2026-05-14",
       "personal_stake": "Built for Iona, who wanted to keep an Anne Frank–style diary on her own terms — and for her sisters Ada and Isla.",
       "short_description": "A private web diary shaped like a book — it opens to today's page, turns its pages, takes dictation, and reads entries back aloud.",
@@ -55,11 +55,18 @@
       "images": {
         "gallery": []
       },
+      "state": {
+        "stage": "production",
+        "last": "shipped and live at edelmore.sageframe.net; ho sequence through ho-11 (page-turn rewrite, View Transitions) closed; ho-12 (content single-source, anchored voice) and ho-13 (whole-entry narration) are open.",
+        "next": "close ho-12 (content single-source / anchored voice), then ho-13 (whole-entry narration).",
+        "as_of": "2026-07-14"
+      },
       "_keisaku": {
-        "generated_at": "2026-07-13T10:31:22",
+        "generated_at": "2026-07-14T16:51:39",
         "generator_version": "1",
         "sources": {
           "readme": "README.md",
+          "contract": "ho-process/kamae-6-edelmore-diary-state-memory.md",
           "description": "metadata/description.md",
           "manifest": "package.json"
         },
@@ -69,6 +76,7 @@
           "media": [
             "software"
           ],
+          "status": "shipped",
           "created": "2026-06-19",
           "tags": [
             "javascript",
@@ -84,9 +92,7 @@
             "SvelteKit (TypeScript, Svelte 5 runes), SQLite via better-sqlite3, Tailwind v4, StPageFlip, and argon2id, with optional WhisperX transcription and Kokoro TTS read-aloud; deployed with Docker and Caddy."
           ]
         },
-        "contract_issues": [
-          "no-contract-source"
-        ]
+        "contract_issues": []
       }
     }
   ]

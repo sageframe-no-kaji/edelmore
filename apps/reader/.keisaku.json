@@ -37,7 +37,7 @@
       ],
       "tech_stack": "JavaScript (@edelmore/book, @edelmore/design, @edelmore/narration, better-sqlite3, fast-xml-parser, jszip)",
       "created": "2026-06-14",
-      "last_updated": "2026-07-04",
+      "last_updated": "2026-07-14",
       "conceived": "2026-06-14",
       "personal_stake": "For a kid who hears stories better than she reads them — and for anyone who wants reading to feel like the thing it used to be.",
       "short_description": "A self-hosted read-along EPUB reader that feels like a real book — a songbird in the margin reads aloud while each word glows as it is spoken.",
@@ -56,11 +56,18 @@
           "note": "The sibling fork: reuses the diary's book metaphor, narration stack, visual identity, and deployment pattern; swaps the content model (diary entries → book chapters)."
         }
       ],
+      "state": {
+        "stage": "dev",
+        "last": "scaffolded on the diary's shared `@edelmore/*` packages; ho-02 (extract book) and ho-03 (extract narration) done; ho-04 (page-turn rewrite, View Transitions in @edelmore/book) in progress on `feat/ho-04-phase-cde` — phase C landed.",
+        "next": "finish ho-04 (remaining phases), merge `feat/ho-04-phase-cde`.",
+        "as_of": "2026-07-14"
+      },
       "_keisaku": {
-        "generated_at": "2026-07-13T10:31:22",
+        "generated_at": "2026-07-14T16:51:40",
         "generator_version": "1",
         "sources": {
           "readme": "README.md",
+          "contract": "ho-process/kamae-6-edelmore-reader-state-memory.md",
           "description": "metadata/description.md",
           "manifest": "package.json"
         },
@@ -70,6 +77,7 @@
           "media": [
             "software"
           ],
+          "status": "in-development",
           "created": "2026-06-19",
           "tags": [
             "javascript",
@@ -86,9 +94,7 @@
             "Planned stack: SvelteKit (TypeScript), SQLite via better-sqlite3, server-side EPUB parsing, CSS multi-column pagination, View Transitions page-turns, self-hosted Kokoro TTS, Tailwind v4, and Docker. Scaffolded — seed committed, no code yet."
           ]
         },
-        "contract_issues": [
-          "no-contract-source"
-        ]
+        "contract_issues": []
       }
     }
   ]
