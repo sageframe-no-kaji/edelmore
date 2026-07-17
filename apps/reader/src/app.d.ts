@@ -11,6 +11,15 @@ declare global {
       db: Database;
       /** Root of the on-disk library: books/<id>/{original.epub,book.json,images/}. */
       dataDir: string;
+      /**
+       * Household identity marker (hooks.server.ts sets it on every request).
+       * The reader has no auth; the shared @edelmore/narration speak handlers
+       * gate on `locals.user`, so under the household model network locality is
+       * the identity and this constant satisfies the package's contract without
+       * modifying the package. Optional in the type because the diary's richer
+       * user shape and the reader's marker both flow through the same package.
+       */
+      user?: { id: number };
     }
     // interface PageData {}
     // interface PageState {}

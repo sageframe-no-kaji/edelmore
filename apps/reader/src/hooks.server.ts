@@ -8,11 +8,21 @@ import type { Database } from 'better-sqlite3';
 // locality is the access boundary. The handle only wires per-request state:
 // the database and the on-disk data directory.
 //
+// Household identity marker. The shared @edelmore/narration speak handlers
+// gate on `locals.user` (they were written for the diary, which has real
+// per-user sessions). The reader has no sessions — so under the household
+// model, network locality IS the identity, and every request carries this
+// constant marker to satisfy that gate. This is a deliberate workaround that
+// lives in the app, NOT the package: the package's auth contract is unchanged.
+// See apps/reader/src/routes/api/speak/+server.ts for the open identity note.
+export const HOUSEHOLD_USER = { id: 0 } as const;
+
 // Extracted so tests can call it with an in-memory database and a temp dir.
 export function createHandle(db: Database, dataDir: string): Handle {
   return async ({ event, resolve }) => {
     event.locals.db = db;
     event.locals.dataDir = dataDir;
+    event.locals.user = HOUSEHOLD_USER;
     return resolve(event);
   };
 }
