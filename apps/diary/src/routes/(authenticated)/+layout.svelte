@@ -1019,7 +1019,7 @@ $effect(() => {
 							</div>
 						</div>
 					{:else if spreadState.kind === 'backCover'}
-						<div role="presentation" class="h-full w-full">
+						<div role="presentation" class="cover-bleed">
 							<CoverPage config={activeCover} {username} {diaryTitle} backCover={true} />
 						</div>
 					{:else if spreadState.kind === 'entry'}
@@ -1290,7 +1290,7 @@ $effect(() => {
 					{:else if spreadState.kind === 'toc'}
 						<TocPage entries={entryDatePreviews} onNavigate={navigateTo} />
 					{:else if spreadState.kind === 'cover'}
-						<div role="presentation" class="h-full w-full cursor-pointer" onclick={onFlipNext}>
+						<div role="presentation" class="cover-bleed cursor-pointer" onclick={onFlipNext}>
 							<CoverPage config={activeCover} {username} {diaryTitle} showSettings={true} buttonLabel="Turn to today" onOpenSettings={() => { void diaryFlip('forward', () => navigateTo(todayIso())); }} />
 						</div>
 					{:else if spreadState.kind === 'backEndpaper'}
@@ -1539,6 +1539,18 @@ $effect(() => {
 <style>
 	.page-top-link {
 		font-family: 'EB Garamond', Georgia, serif;
+	}
+
+	/* Closed-book states: the cover art stands at the leather FRAME's height,
+	   not the inner page box — the boards of a closed book are the frame.
+	   The shell is 93% of the frame, so bleed (100-93)/2 / 93 past each edge.
+	   Requires the cover-state page's overflow:visible (Spread.svelte). */
+	.cover-bleed {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: -3.7634%;
+		bottom: -3.7634%;
 	}
 
 	.settings-logout-link {
@@ -1922,6 +1934,12 @@ $effect(() => {
 		z-index: 35;
 		width: 28cqi;
 		height: 22cqi;
+		/* Own view-transition group: the pages are named groups whose snapshots
+		   paint above the root layer during a flip; without a name of its own,
+		   the overhanging quill sits in the root layer and gets covered for the
+		   duration of every transition — the "feather flash". A named group
+		   captured later in DOM order paints above the pages. */
+		view-transition-name: mic-quill;
 	}
 
 	.page-mic-quill :global(.mic-quill) {

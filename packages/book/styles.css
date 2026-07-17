@@ -46,3 +46,136 @@
 .flip-hidden {
   visibility: hidden !important;
 }
+
+/* ── View Transitions (reader Ho-04) ─────────────────────────────────────── */
+
+/* The shell chrome (leather frame fade, page-stack widths, seam, shadow
+ * backdrop) has its own hand-tuned 700ms CSS transitions. The default root
+ * crossfade fights them — a static old-snapshot blending against a live
+ * document that is mid-transition produces the open/close flashing. Disable
+ * the root animation entirely: only the named groups (the pages, plus any
+ * consumer-named overlays) animate; everything else stays live and keeps its
+ * own transitions, exactly as before the View Transitions path existed. */
+::view-transition-old(root) {
+  /* Gone immediately — the live new root (with its own chrome transitions)
+   * is the only root layer. Leaving the old snapshot visible underneath
+   * ghosts the previous state through any not-yet-opaque chrome during
+   * open/close moves. */
+  animation: none;
+  opacity: 0;
+}
+::view-transition-new(root) {
+  animation: none;
+}
+
+/* The gutter seam sits above the spread. Page snapshots paint above the root
+ * layer during a transition; without its own group the seam is buried for the
+ * duration of every turn. Captured after the pages in DOM order, so its group
+ * paints above them. */
+.shell-seam {
+  view-transition-name: shell-seam;
+}
+
+/* ── Phase C1: the 3D book turn ──────────────────────────────────────────────
+ *
+ * A physical page turn in two halves over 700ms — the same clock as the shell
+ * chrome's transitions (frame fade, stack widths), so cover ↔ endpaper moves
+ * stay coordinated instead of the pages outrunning the leather.
+ *
+ * Forward: the OLD right page lifts and rotates to edge-on at the spine
+ * (0 → -90° over the first half; rotateY(-90) renders zero-width, so it
+ * vanishes at the midpoint without an opacity hack), revealing the NEW right
+ * page that sits beneath it the whole time. In the second half the NEW left
+ * page falls flat from edge-on (90° → 0), like the turned leaf landing. The
+ * OLD left page holds until the midpoint, then yields. Backward mirrors it.
+ *
+ * BookShell sets data-page-flip on <html> for the transition's duration.
+ */
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Depth for the rotating halves. */
+  ::view-transition-image-pair(page-left),
+  ::view-transition-image-pair(page-right) {
+    perspective: 1500px;
+  }
+
+  /* No group morph: the default animation slides/scales each page's snapshot
+   * box between old and new geometry on its own 250ms clock, dragging the
+   * rotating faces across the screen during cover ↔ endpaper moves. Snap the
+   * box; the face rotations are the only motion. */
+  ::view-transition-group(page-left),
+  ::view-transition-group(page-right) {
+    animation: none;
+  }
+
+  @keyframes edelmore-lift-to-edge-left {
+    from { transform: rotateY(0deg); }
+    to { transform: rotateY(-90deg); }
+  }
+  @keyframes edelmore-lift-to-edge-right {
+    from { transform: rotateY(0deg); }
+    to { transform: rotateY(90deg); }
+  }
+  @keyframes edelmore-fall-from-edge-left {
+    from { transform: rotateY(-90deg); }
+    to { transform: rotateY(0deg); }
+  }
+  @keyframes edelmore-fall-from-edge-right {
+    from { transform: rotateY(90deg); }
+    to { transform: rotateY(0deg); }
+  }
+  @keyframes edelmore-hold-then-yield {
+    0%, 50% { opacity: 1; }
+    50.01%, 100% { opacity: 0; }
+  }
+
+  /* ── Forward: right page turns leftward over the spine ── */
+  html[data-page-flip='forward']::view-transition-old(page-right) {
+    animation: edelmore-lift-to-edge-left 350ms cubic-bezier(0.4, 0, 1, 1) both;
+    transform-origin: left center;
+    backface-visibility: hidden;
+    z-index: 1; /* stay above the new page it is uncovering */
+  }
+  html[data-page-flip='forward']::view-transition-new(page-right) {
+    animation: none; /* revealed beneath the lifting page */
+  }
+  html[data-page-flip='forward']::view-transition-old(page-left) {
+    animation: edelmore-hold-then-yield 700ms linear both;
+    z-index: 1; /* old spread reads intact until the midpoint */
+  }
+  html[data-page-flip='forward']::view-transition-new(page-left) {
+    animation: edelmore-fall-from-edge-right 350ms 350ms cubic-bezier(0, 0, 0.2, 1) both;
+    transform-origin: right center;
+    backface-visibility: hidden;
+  }
+
+  /* ── Backward: left page turns rightward over the spine ── */
+  html[data-page-flip='backward']::view-transition-old(page-left) {
+    animation: edelmore-lift-to-edge-right 350ms cubic-bezier(0.4, 0, 1, 1) both;
+    transform-origin: right center;
+    backface-visibility: hidden;
+    z-index: 1;
+  }
+  html[data-page-flip='backward']::view-transition-new(page-left) {
+    animation: none;
+  }
+  html[data-page-flip='backward']::view-transition-old(page-right) {
+    animation: edelmore-hold-then-yield 700ms linear both;
+    z-index: 1;
+  }
+  html[data-page-flip='backward']::view-transition-new(page-right) {
+    animation: edelmore-fall-from-edge-left 350ms 350ms cubic-bezier(0, 0, 0.2, 1) both;
+    transform-origin: left center;
+    backface-visibility: hidden;
+  }
+
+  /* Keep the overlay/chrome groups from crossfading on their own clock —
+   * identical content should simply persist. */
+  ::view-transition-old(shell-seam) {
+    animation: none;
+    opacity: 0;
+  }
+  ::view-transition-new(shell-seam) {
+    animation: none;
+  }
+}
