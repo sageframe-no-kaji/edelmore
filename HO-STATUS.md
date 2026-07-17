@@ -2,7 +2,7 @@
 
 _Where each app's Kamae chain sits right now. A signpost — update when a ho ships, opens, or gets filed. The chain docs themselves live in each app's gitignored `ho-process/` directory._
 
-Last updated: 2026-07-04 (audit fix batch #12–#17 merged; reader EPUB piping #18–#21 merged; reader Ho-04 page-turn rewrite opened, superseding diary ho-11).
+Last updated: 2026-07-17 (reader Ho-04 Phase C merged #26 — 3D View Transitions turn, practitioner-verified; reader book route + whole-chapter narration shipped #27–#29: state machine, positions, library switching, audible read-along on `/`).
 
 ---
 
@@ -33,8 +33,9 @@ Extraction hos (Ho-01/02/03) shipped from the reader's chain, not the diary's �
 | Ho-01 — extract `@edelmore/design` | ✅ shipped (`078bf23`) | |
 | Ho-02 — extract `@edelmore/book` | ✅ shipped (`f29b619`) | |
 | Ho-03 — extract `@edelmore/narration` | ✅ shipped (`5f1bce1`) | Scope drift acknowledged in `hos/ho-03-extract-narration.md → Reflect`. Diary Ho-08 filed as the follow-up. |
-| **Ho-04 — page-turn rewrite (View Transitions in `@edelmore/book`)** | 🟢 **open — Phases A–B merged (#23); C–E are the practitioner session** | Supersedes diary ho-11. Flips are the browser's default crossfade until Phase C styles the 3D turn. `hos/ho-04-page-turn-view-transitions.md` |
+| **Ho-04 — page-turn rewrite (View Transitions in `@edelmore/book`)** | 🟢 **open — Phases A–C merged (#23, #26), practitioner-verified; D/E remain** | Supersedes diary ho-11. 3D turn live; edge checks, 500ms verdict, clone-code deletion pending. `hos/ho-04-page-turn-view-transitions.md` |
 | EPUB piping (scaffold, parser, library/ingestion, pagination + dev route) | ✅ shipped (#18–#21, 2026-07-03/04) | Built from `audit/R-AT-01…04` specs ahead of the Kamae 4 re-flow, per decisions in `notes/kamae-2-followup-prep.md` §2026-07-03. Kamae 4 assigns its numbers when it updates. |
+| Book route + narration (state machine, positions, library switching, whole-chapter engine, read-along wiring) | ✅ shipped (#27–#29, 2026-07-17) | `audit/R-AT-05…07`. Placeholder visuals throughout — cover art, transform, ribbon, dog-ears are the practitioner design hos. Listening pass pending. |
 | Ho-05+ | ⏳ awaits Kamae 2 follow-up (identity mechanic, decision 7) + Kamae 4 re-flow | |
 
 ---
