@@ -128,8 +128,12 @@ export async function flip(
     // AT-02 / Decision 11: the try/finally invariant is preserved on this
     // branch too. isFlipping is released whether the transition completes or
     // mutate() rejects, and the transition owns its own pseudo-elements — there
-    // is nothing for us to strand, so cleanup is just the flag.
+    // is nothing for us to strand, so cleanup is the flag and the direction
+    // attribute.
     isFlipping = true;
+    // Direction hint for the ::view-transition CSS (styles.css): the turn's
+    // choreography is directional and CSS can't know which way the page went.
+    document.documentElement.setAttribute('data-page-flip', direction);
     try {
       const transition = document.startViewTransition(() =>
         Promise.resolve(mutate())
@@ -139,6 +143,7 @@ export async function flip(
       // the whole turn.
       await transition.finished;
     } finally {
+      document.documentElement.removeAttribute('data-page-flip');
       isFlipping = false;
     }
     return;
@@ -329,6 +334,11 @@ export async function flip(
 
   .book-frame.is-closed::before {
     opacity: 0;
+    /* Closing: the open-book chrome must get out of the way faster than the
+       cover lands — a 700ms fade leaves an open-book-sized frame ghost
+       around the (half-size) closed book. Opening keeps the base 700ms
+       fade-in, coordinated under the turning cover. */
+    transition-duration: 250ms;
   }
 
   .book-shell {
@@ -391,10 +401,13 @@ export async function flip(
   }
 
   /* Cover/back-cover (closed): hide the rectangular backdrop. The
-   * consumer's cover artwork provides its own shadow. */
+   * consumer's cover artwork provides its own shadow. Fast fade-out for the
+   * same reason as the leather frame — the open-size shadow must not ghost
+   * around the closed book. */
   .book-frame.is-cover-state .book-shadow-backdrop,
   .book-frame.is-back-cover-state .book-shadow-backdrop {
     opacity: 0;
+    transition-duration: 250ms;
   }
 
   /* Shell stack suppression for endpaper states */

@@ -129,13 +129,18 @@ const {
 		background: transparent;
 	}
 
-	/* Cover/back-cover: full-bleed leather image — strip all page frame effects */
+	/* Cover/back-cover: full-bleed leather image — strip all page frame effects.
+	   overflow visible so the consumer's cover art can stand at the FRAME's
+	   footprint (the boards of a closed book are the frame): the leather frame
+	   fades out in closed states, and art capped at the inner page box renders
+	   a closed book smaller than the open one. */
 	.spread.is-cover-spread .page {
 		background: transparent;
 		box-shadow: none;
 		filter: none;
 		clip-path: none;
 		border: none;
+		overflow: visible;
 	}
 
 	.spread.is-cover-spread .page::before,

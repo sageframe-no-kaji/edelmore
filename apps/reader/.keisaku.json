@@ -8,10 +8,7 @@
       "importance": 4,
       "featured": false,
       "group": "adaptive-tools",
-      "themes": [
-        "agency",
-        "attention"
-      ],
+      "themes": ["agency", "attention"],
       "sort_order_within_group": 20,
       "tags": [
         "software",
@@ -24,9 +21,7 @@
         "accessibility",
         "personal"
       ],
-      "media": [
-        "software"
-      ],
+      "media": ["software"],
       "status": "scaffolded",
       "repo": "git@github-no-kaji:sageframe-no-kaji/edelmore.git",
       "deployment": [
@@ -56,6 +51,8 @@
           "note": "The sibling fork: reuses the diary's book metaphor, narration stack, visual identity, and deployment pattern; swaps the content model (diary entries → book chapters)."
         }
       ],
+      "availability": "internal",
+      "usage": "none",
       "state": {
         "stage": "dev",
         "last": "scaffolded on the diary's shared `@edelmore/*` packages; ho-02 (extract book) and ho-03 (extract narration) done; ho-04 (page-turn rewrite, View Transitions in @edelmore/book) in progress on `feat/ho-04-phase-cde` — phase C landed.",
@@ -74,9 +71,7 @@
         "derived_defaults": {
           "id": "reader",
           "name": "Edelmore Reader",
-          "media": [
-            "software"
-          ],
+          "media": ["software"],
           "status": "in-development",
           "created": "2026-06-19",
           "tags": [

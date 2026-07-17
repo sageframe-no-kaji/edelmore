@@ -8,10 +8,7 @@
       "importance": 5,
       "featured": false,
       "group": "adaptive-tools",
-      "themes": [
-        "agency",
-        "sovereignty"
-      ],
+      "themes": ["agency", "sovereignty"],
       "sort_order_within_group": 10,
       "tags": [
         "software",
@@ -23,9 +20,7 @@
         "homelab",
         "personal"
       ],
-      "media": [
-        "software"
-      ],
+      "media": ["software"],
       "status": "shipped",
       "repo": "git@github-no-kaji:sageframe-no-kaji/edelmore.git",
       "deployment": [
@@ -55,6 +50,8 @@
       "images": {
         "gallery": []
       },
+      "availability": "shipped",
+      "usage": "others",
       "state": {
         "stage": "production",
         "last": "shipped and live at edelmore.sageframe.net; ho sequence through ho-11 (page-turn rewrite, View Transitions) closed; ho-12 (content single-source, anchored voice) and ho-13 (whole-entry narration) are open.",
@@ -73,9 +70,7 @@
         "derived_defaults": {
           "id": "diary",
           "name": "Edelmore Diary",
-          "media": [
-            "software"
-          ],
+          "media": ["software"],
           "status": "shipped",
           "created": "2026-06-19",
           "tags": [
