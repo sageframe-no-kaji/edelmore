@@ -26,9 +26,15 @@ import {
   flipPrev,
 } from '$lib/book-state.js';
 import ChapterMeasurer from '$lib/components/ChapterMeasurer.svelte';
+import NarrationControls from '$lib/components/NarrationControls.svelte';
 import PageView from '$lib/components/PageView.svelte';
 import PersonPicker from '$lib/components/PersonPicker.svelte';
 import type { NormalizedBook } from '$lib/epub/model.js';
+import {
+  type NarrationEngine,
+  type NarrationPhase,
+  createNarrationEngine,
+} from '$lib/narration-engine.js';
 import {
   spreadCount as spreadCountOf,
   spreadForOffset,
@@ -124,6 +130,9 @@ const slices = $derived(
     : { leftStart: 0, leftEnd: 0, rightStart: 0, rightEnd: 0 }
 );
 const progress = $derived(bookProgress(spreadState, chapterCharCounts, slices.leftStart));
+// Spreads the ACTIVE chapter paginates into — drives the narration boundary
+// target (last spread → no boundary; the chapter simply ends).
+const activeCount = $derived(spreadCountOf(activeSplits));
 
 // The book's title, shown on the placeholder cover and title page.
 const bookTitle = $derived(activeBook?.title || 'Edelmore');
@@ -179,6 +188,8 @@ function onPerson(name: string | null): void {
 }
 
 async function selectBook(id: string): Promise<void> {
+  // Switching books stops any narration of the outgoing book.
+  stopNarrationOnManualNav();
   // Selection lands on the chosen book's title page; its stored position is
   // applied when the reader enters its chapters (task req. 3).
   restorePos = person ? positionForBook(books, id, person) : null;
@@ -230,9 +241,108 @@ $effect(() => {
   saver.save({ bookId: id, person: who, pos: { chapterIdx: st.chapterIdx, charOffset: leftStart } });
 });
 
+// ── Narration engine ────────────────────────────────────────────────────────
+//
+// The dev route (routes/dev/book/[id]) is the reference wiring; this is the
+// same composition against the real book's state machine. The headless engine
+// narrates the CURRENT chapter from the current spread's start to the chapter
+// end in one stream (whole-chapter model). Its callbacks push into $state so
+// the template reacts; the engine holds no Svelte state. Controls render only on
+// chapter spreads — never closed/title/library.
+const DEFAULT_VOICE = 'bf_emma';
+
+let narrationPhase = $state<NarrationPhase>('idle');
+let narrationRate = $state(1.0);
+// Chapter-absolute char index of the currently narrated word (null = none).
+let currentCharIndex = $state<number | null>(null);
+// Guards the manual-flip-stops-narration rule: a flip the engine itself
+// requested at a spread boundary must NOT stop the audio, whereas a flip the
+// reader initiates (zone tap, arrow key, library) must. Set true only for the
+// duration of an engine-initiated flip.
+let narrationFlip = false;
+
+const engine: NarrationEngine = createNarrationEngine({
+  fetchSpeak: ({ text, speed, signal }) =>
+    fetch('/api/speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, voice: DEFAULT_VOICE, speed }),
+      signal,
+    }),
+  onPhaseChange: (p) => {
+    narrationPhase = p;
+    if (p === 'idle') currentCharIndex = null;
+  },
+  onWordHighlight: (absCharIndex) => {
+    currentCharIndex = absCharIndex;
+  },
+  onPageBoundaryReached: () => {
+    // Consumer of the highlight timeline: flip forward without stopping audio.
+    narrationFlip = true;
+    void flipForNarration().finally(() => {
+      narrationFlip = false;
+    });
+  },
+});
+
+// Keep the engine's page-boundary target aligned with the visible spread. The
+// boundary fires when the highlight crosses the current spread's end offset
+// (splitPoints[2*spread+1]); on the last spread of a chapter (or any non-chapter
+// spread) there is no next spread, so the target is null — no flip, the chapter
+// simply ends.
+$effect(() => {
+  const st = spreadState;
+  if (st.kind !== 'chapter') {
+    engine.setPageEndOffset(null);
+    return;
+  }
+  const isLastSpread = st.spread >= activeCount - 1;
+  engine.setPageEndOffset(isLastSpread ? null : (activeSplits[st.spread * 2 + 1] ?? null));
+});
+
+function startNarration(): void {
+  if (spreadState.kind !== 'chapter' || !activeChapter) return;
+  // Whole-chapter model: from the current spread's start to the chapter end.
+  void engine.play(activeChapter.text, slices.leftStart);
+}
+
+function changeRate(delta: number): void {
+  engine.setRate(engine.getRate() + delta);
+  narrationRate = engine.getRate();
+}
+
+function resetRate(): void {
+  engine.setRate(1.0);
+  narrationRate = engine.getRate();
+}
+
+// AUTO-ADVANCE ACROSS CHAPTERS IS AN OPEN DESIGN DECISION. At chapter end the
+// engine goes idle and stays there; the reader continues by flipping to the
+// next chapter and pressing play again. Whether narration should roll straight
+// into the next chapter (and how that interacts with the physical-book page
+// turn) belongs to the ribbon ho, not this wiring (same decision as the dev
+// route).
+
+// A flip the reader initiates stops narration; a flip the engine requested at a
+// spread boundary (narrationFlip) does not — the audio rolls on across the page
+// turn. Entering title/library or switching books also stops.
+function stopNarrationOnManualNav(): void {
+  if (narrationFlip) return;
+  if (engine.getPhase() !== 'idle') engine.stop();
+}
+
+// The engine-initiated forward flip: advance one spread through the state
+// machine WITHOUT stopping the audio. The boundary only fires mid-chapter
+// (pageEndOffset is null on the last spread), so this never crosses a chapter.
+async function flipForNarration(): Promise<void> {
+  if (!canNext) return;
+  await bookFlip('forward', flipNext(spreadState, shape));
+}
+
 // ── Navigation ───────────────────────────────────────────────────────────────
 function onFlipNext(): void {
   if (!canNext) return;
+  stopNarrationOnManualNav();
   // Opening the cover, or entering chapters from the library, honors a stored
   // position (restore-on-open). Consumed once; the spread is resolved after
   // measurement by the restore effect above.
@@ -246,8 +356,17 @@ function onFlipNext(): void {
   void bookFlip('forward', flipNext(spreadState, shape));
 }
 
+// The provisional "Library" control (jumps back to the library spread). A
+// manual nav — stops any narration of the current chapter.
+function onLibrary(): void {
+  stopNarrationOnManualNav();
+  void bookFlip('backward', { kind: 'library' });
+}
+
 function onFlipPrev(): void {
   if (!canPrev) return;
+  // Backward is only ever reader-initiated (the engine never flips back).
+  stopNarrationOnManualNav();
   const next = flipPrev(spreadState, shape);
   void bookFlip('backward', next);
   // Closing to the cover flushes the pending place immediately (keepalive).
@@ -299,7 +418,7 @@ onMount(() => {
            real "flip back to the library page" control lives in the narration
            ribbon another task owns; this bare link keeps book-switching reachable
            without flipping through the whole book. -->
-      <button type="button" class="library-link" onclick={() => bookFlip('backward', { kind: 'library' })}>
+      <button type="button" class="library-link" onclick={onLibrary}>
         Library
       </button>
     {/if}
@@ -335,6 +454,7 @@ onMount(() => {
                   text={activeChapter.text.slice(slices.leftStart, slices.leftEnd)}
                   sliceStart={slices.leftStart}
                   emphasis={activeChapter.emphasis}
+                  {currentCharIndex}
                 />
               </div>
             </div>
@@ -382,6 +502,7 @@ onMount(() => {
                   text={activeChapter.text.slice(slices.rightStart, slices.rightEnd)}
                   sliceStart={slices.rightStart}
                   emphasis={activeChapter.emphasis}
+                  {currentCharIndex}
                 />
               </div>
             </div>
@@ -390,6 +511,22 @@ onMount(() => {
       </Spread>
     </BookShell>
   </div>
+
+  <!-- Provisional narration controls — chapter spreads only (never
+       closed/title/library). The physical-book ribbon replaces these later. -->
+  {#if spreadState.kind === 'chapter'}
+    <NarrationControls
+      phase={narrationPhase}
+      rate={narrationRate}
+      onPlay={startNarration}
+      onPause={() => engine.pause()}
+      onResume={() => engine.resume()}
+      onStop={() => engine.stop()}
+      onSlower={() => changeRate(-0.1)}
+      onResetRate={resetRate}
+      onFaster={() => changeRate(0.1)}
+    />
+  {/if}
 
   <ChapterMeasurer bind:this={measurer} />
 </main>
