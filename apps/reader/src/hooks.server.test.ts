@@ -24,5 +24,7 @@ describe('createHandle', () => {
     expect(result).toBe(mockResponse);
     expect(event.locals.db).toBe(db);
     expect(event.locals.dataDir).toBe('/tmp/reader-data');
+    // Household identity marker — satisfies the shared speak handler's gate.
+    expect(event.locals.user).toEqual({ id: 0 });
   });
 });
