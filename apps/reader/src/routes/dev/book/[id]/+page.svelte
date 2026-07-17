@@ -16,6 +16,7 @@ import ChapterMeasurer from '$lib/components/ChapterMeasurer.svelte';
 import PageView from '$lib/components/PageView.svelte';
 import type { EmphasisRange } from '$lib/epub/model.js';
 import { spreadCount, spreadSlices } from '$lib/pagination.js';
+import { openingChapter, paginateBook } from '$lib/use-pagination.js';
 import type { PageData } from './$types';
 
 const { data }: { data: PageData } = $props();
@@ -50,33 +51,20 @@ $effect(() => {
   if (!m || !ref || b.chapters.length === 0) return;
   // Open on the first chapter that has text — cover-image-only spine entries
   // (0 chars) render blank and make the book look broken as an opening state.
-  const firstText = Math.max(
-    0,
-    b.chapters.findIndex((c) => c.text.length > 0)
-  );
-  chapterIdx = firstText;
+  chapterIdx = openingChapter(b.chapters);
   spread = 0;
-  // Measure the opening chapter first and paint it immediately; the rest
-  // paginate one per macrotask so the main thread (and first paint) is never
-  // blocked — dev-mode measurement runs ~1-2s per chapter, and a synchronous
-  // all-chapters loop froze the page for the whole book.
-  const order = [firstText, ...b.chapters.map((_, i) => i).filter((i) => i !== firstText)];
-  let cancelled = false;
-  void (async () => {
-    for (const i of order) {
-      if (cancelled) return;
-      const chapter = b.chapters[i];
-      const t0 = performance.now();
-      chapterSplits[i] = m.paginate(ref, chapter.text, chapter.emphasis);
-      console.debug(
-        `[dev/book] chapter ${chapter.idx} (${chapter.text.length} chars) paginated in ${Math.round(performance.now() - t0)}ms`
-      );
-      await new Promise((r) => setTimeout(r, 0));
-    }
-  })();
-  return () => {
-    cancelled = true;
-  };
+  // Measure-once-cache-splits: opening chapter first (painted immediately), the
+  // rest one per macrotask so first paint is never blocked. Shared with the
+  // real book route via $lib/use-pagination.
+  return paginateBook({
+    book: b,
+    measurer: m,
+    referenceEl: ref,
+    onSplits: (i, points) => {
+      chapterSplits[i] = points;
+    },
+    log: (msg) => console.debug(msg),
+  });
 });
 
 const chapter = $derived(book.chapters[chapterIdx]);
