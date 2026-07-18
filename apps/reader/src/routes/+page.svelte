@@ -154,7 +154,15 @@ const overhangRem = $derived(spreadState.kind === 'closed' ? 0 : 100);
 
 // ── Data loading ─────────────────────────────────────────────────────────────
 async function loadShelf(): Promise<void> {
-  books = await fetchShelf();
+  // A failed shelf fetch must never crash the book (and must not surface as
+  // an unhandled rejection from the mount-time call) — the shelf stays empty
+  // and the library page says so.
+  try {
+    books = await fetchShelf();
+  } catch {
+    books = [];
+    return;
+  }
   shelfLoaded = true;
   const restore = person ? pickRestore(books, person) : null;
   if (restore) {
@@ -175,7 +183,12 @@ async function loadBook(id: string): Promise<void> {
     activeBook = cached;
     return;
   }
-  const res = await fetch(`/api/books/${id}`);
+  let res: Response;
+  try {
+    res = await fetch(`/api/books/${id}`);
+  } catch {
+    return;
+  }
   if (!res.ok) return;
   const book = (await res.json()) as NormalizedBook;
   bookCache.set(id, book);
@@ -184,7 +197,15 @@ async function loadBook(id: string): Promise<void> {
 
 function onPerson(name: string | null): void {
   person = name;
-  if (name && !shelfLoaded) void loadShelf();
+  // Shelf loads on mount regardless; choosing a person afterwards applies
+  // their most-recent stored place (their bookmark takes over).
+  if (name && shelfLoaded) {
+    const restore = pickRestore(books, name);
+    if (restore) {
+      restorePos = { chapterIdx: restore.chapterIdx, charOffset: restore.charOffset };
+      void loadBook(restore.bookId);
+    }
+  }
 }
 
 async function selectBook(id: string): Promise<void> {
@@ -388,6 +409,9 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 onMount(() => {
+  // The shelf loads immediately — reading is never gated on identity (the
+  // household model: the network is the gate; a person name is attribution).
+  void loadShelf();
   // Last-chance save when the tab closes or is hidden (lid shut, tab switch).
   function flush(): void {
     saver.flush();
@@ -463,7 +487,9 @@ onMount(() => {
 
         {#snippet rightPage()}
           {#if spreadState.kind === 'closed'}
-            <div class="placeholder-cover"><span>{bookTitle}</span></div>
+            <div class="cover-bleed">
+              <div class="placeholder-cover"><span>{bookTitle}</span></div>
+            </div>
           {:else if spreadState.kind === 'title'}
             <div class="page-pad">
               <div class="page-plain title-page">
@@ -515,6 +541,7 @@ onMount(() => {
   <!-- Provisional narration controls — chapter spreads only (never
        closed/title/library). The physical-book ribbon replaces these later. -->
   {#if spreadState.kind === 'chapter'}
+    <div class="narration-dock">
     <NarrationControls
       phase={narrationPhase}
       rate={narrationRate}
@@ -526,6 +553,7 @@ onMount(() => {
       onResetRate={resetRate}
       onFaster={() => changeRate(0.1)}
     />
+    </div>
   {/if}
 
   <ChapterMeasurer bind:this={measurer} />
@@ -541,25 +569,44 @@ onMount(() => {
     align-items: center;
     justify-content: center;
     gap: 1.5rem;
-    background: #3a3128;
+    background-image: url('/background.png');
+    background-repeat: repeat;
+    background-size: 627px 627px;
     padding: 2rem;
   }
 
+  /* Bookplate card, top-left — out of the book's way. Provisional. */
   .reader-topbar {
+    position: absolute;
+    top: 1.25rem;
+    left: 1.5rem;
     display: flex;
     align-items: center;
     gap: 1rem;
-    color: #e8ddb5;
+    padding: 0.5rem 0.9rem;
+    background: rgba(254, 252, 247, 0.92);
+    border: 1px solid #dfc9a4;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+    color: #4a3728;
+    font-family: 'EB Garamond', Georgia, serif;
+    z-index: 40;
   }
 
   .library-link {
-    font-family: Georgia, 'Times New Roman', serif;
-    font-size: 0.85rem;
-    color: #e8ddb5;
+    font-family: 'EB Garamond', Georgia, serif;
+    font-size: 0.9rem;
+    color: #8b6914;
     background: transparent;
-    border: 1px solid #6e5a3c;
+    border: 1px solid #dfc9a4;
+    border-radius: 0.35rem;
     padding: 0.15rem 0.6rem;
     cursor: pointer;
+    transition: opacity 0.15s;
+  }
+
+  .library-link:hover {
+    opacity: 0.7;
   }
 
   .book-wrap {
@@ -568,20 +615,57 @@ onMount(() => {
     margin-top: 2.4rem; /* BookShell pulls itself up 2.4rem */
   }
 
+  /* Out of the document flow: mounting/unmounting the controls must never
+     reflow the centered column and bob the book vertically. */
+  .narration-dock {
+    position: fixed;
+    bottom: 1.1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 45;
+  }
+
+  /* Closed-book state: the cover stands at the leather FRAME's footprint,
+     not the inner page box — the boards of a closed book are the frame.
+     Same treatment as the diary (shell is 93% of the frame). Requires the
+     cover-state page's overflow:visible (Spread.svelte, ho-04 C). */
+  .cover-bleed {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -3.7634%;
+    bottom: -3.7634%;
+  }
+
+  /* Provisional leather board — layered gradients standing in for cover art
+     until the practitioner's design pass. Spine shading at the left edge,
+     tooled double border, gold-leaf title. */
   .placeholder-cover {
     width: 100%;
     height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #5a3d2b;
-    border-radius: 4px 8px 8px 4px;
+    background:
+      linear-gradient(to right, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0.12) 4%, transparent 9%),
+      radial-gradient(ellipse at 30% 25%, rgba(255, 225, 180, 0.10) 0%, transparent 55%),
+      radial-gradient(ellipse at 70% 80%, rgba(0, 0, 0, 0.22) 0%, transparent 60%),
+      linear-gradient(135deg, #6b4a30 0%, #57381f 45%, #4a2e18 100%);
+    border-radius: 4px 10px 10px 4px;
     box-shadow:
+      inset 0 0 0 6px rgba(0, 0, 0, 0.18),
+      inset 0 0 0 7px rgba(228, 197, 144, 0.28),
+      inset 0 0 0 14px rgba(0, 0, 0, 0.10),
+      inset 0 0 60px rgba(0, 0, 0, 0.35),
       0 20px 60px rgba(0, 0, 0, 0.45),
       0 6px 18px rgba(0, 0, 0, 0.3);
-    color: #e8ddb5;
+    color: #e9d6a3;
     font-family: 'EB Garamond', Georgia, serif;
-    font-size: 8cqw;
+    font-size: 6.5cqw;
+    letter-spacing: 0.14em;
+    text-shadow:
+      0 1px 0 rgba(0, 0, 0, 0.55),
+      0 0 12px rgba(255, 220, 150, 0.18);
     text-align: center;
     padding: 1rem;
   }
@@ -596,16 +680,16 @@ onMount(() => {
   .page-body {
     flex: 1;
     overflow: hidden;
-    font-family: Georgia, 'Times New Roman', serif;
-    font-size: 16px;
-    line-height: 1.6;
+    font-family: 'EB Garamond', Georgia, serif;
+    font-size: 17px;
+    line-height: 1.65;
     color: #3b2f1e;
   }
 
   .page-plain {
     flex: 1;
     overflow: hidden;
-    font-family: Georgia, 'Times New Roman', serif;
+    font-family: 'EB Garamond', Georgia, serif;
     color: #3b2f1e;
   }
 
@@ -618,19 +702,24 @@ onMount(() => {
   }
 
   .title-page h1 {
-    font-size: 1.8rem;
-    font-weight: 600;
+    font-size: 2.4rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    color: #4a2e18;
   }
 
   .title-author {
     margin-top: 1rem;
     font-style: italic;
+    color: #6e5a3c;
   }
 
   .library-page h2 {
-    font-size: 1.1rem;
+    font-size: 1.15rem;
     font-style: italic;
-    margin-bottom: 1rem;
+    font-weight: 500;
+    color: #6e5a3c;
+    margin-bottom: 1.2rem;
   }
 
   .library-list {
@@ -644,14 +733,20 @@ onMount(() => {
 
   .library-item {
     font: inherit;
+    font-size: 1.05rem;
     text-align: left;
     background: transparent;
     border: none;
-    padding: 0.2rem 0;
+    padding: 0.25rem 0;
     cursor: pointer;
     color: #3b2f1e;
     border-bottom: 1px solid #c8b888;
     width: 100%;
+    transition: color 0.15s;
+  }
+
+  .library-item:hover {
+    color: #8b6914;
   }
 
   .library-item.is-active {
