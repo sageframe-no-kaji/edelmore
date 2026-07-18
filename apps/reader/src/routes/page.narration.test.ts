@@ -333,3 +333,29 @@ describe('the book route — narration wiring', () => {
     expect(engineMock.stop).toHaveBeenCalled();
   });
 });
+
+describe('voice resting note', () => {
+  it('appears when a play attempt dies before audio (loading → idle) and clears on the next attempt', async () => {
+    localStorage.setItem('reader.person', 'iona');
+    stubFetch(
+      shelfWith({
+        alice: [
+          { person: 'iona', chapterIdx: 0, charOffset: 0, updatedAt: '2026-07-15T00:00:00Z' },
+        ],
+      })
+    );
+    const { container } = render(Page);
+    await openIntoAliceChapter(container);
+    // Engine reports loading, then idle without ever playing — service down.
+    capturedConfig?.onPhaseChange?.('loading');
+    capturedConfig?.onPhaseChange?.('idle');
+    await waitFor(() => {
+      expect(container.textContent).toMatch(/the voice is resting/i);
+    });
+    // A fresh attempt clears the note the moment loading begins.
+    capturedConfig?.onPhaseChange?.('loading');
+    await waitFor(() => {
+      expect(container.textContent).not.toMatch(/the voice is resting/i);
+    });
+  });
+});

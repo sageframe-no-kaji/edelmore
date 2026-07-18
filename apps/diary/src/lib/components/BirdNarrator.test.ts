@@ -192,6 +192,20 @@ describe('BirdNarrator engine', () => {
     expect(narrationEnd).toHaveBeenCalledTimes(1);
   });
 
+  it("shows 'the voice is resting' when the TTS fetch fails before any audio", async () => {
+    fetchMock.mockImplementationOnce(() => Promise.reject(new Error('unreachable')));
+    const { bird } = mountBird();
+    await fireEvent.click(bird);
+    await waitFor(() => {
+      expect(bird.classList.contains('is-resting')).toBe(true);
+    });
+    // A fresh click (new loading attempt) clears the resting state.
+    await fireEvent.click(bird);
+    await waitFor(() => {
+      expect(bird.classList.contains('is-resting')).toBe(false);
+    });
+  });
+
   it('issues exactly one /api/speak request per bird click', async () => {
     const { bird } = mountBird({ pageEndOffset: 10 });
 
