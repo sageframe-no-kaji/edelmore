@@ -273,6 +273,11 @@ $effect(() => {
 const DEFAULT_VOICE = 'bf_emma';
 
 let narrationPhase = $state<NarrationPhase>('idle');
+// True when a play attempt died before any audio (loading → idle without ever
+// reaching 'playing') — the TTS service is unreachable or errored. The silent
+// version of this failure has bitten twice; the reader says so out loud now.
+// Provisional copy/placement; the ribbon ho designs its real form.
+let voiceResting = $state(false);
 let narrationRate = $state(1.0);
 // Chapter-absolute char index of the currently narrated word (null = none).
 let currentCharIndex = $state<number | null>(null);
@@ -291,6 +296,8 @@ const engine: NarrationEngine = createNarrationEngine({
       signal,
     }),
   onPhaseChange: (p) => {
+    if (p === 'loading' || p === 'playing') voiceResting = false;
+    if (narrationPhase === 'loading' && p === 'idle') voiceResting = true;
     narrationPhase = p;
     if (p === 'idle') currentCharIndex = null;
   },
@@ -553,6 +560,9 @@ onMount(() => {
       onResetRate={resetRate}
       onFaster={() => changeRate(0.1)}
     />
+    {#if voiceResting}
+      <p class="voice-resting">The voice is resting — is the narration service awake?</p>
+    {/if}
     </div>
   {/if}
 
@@ -623,6 +633,22 @@ onMount(() => {
     left: 50%;
     transform: translateX(-50%);
     z-index: 45;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .voice-resting {
+    font-family: 'EB Garamond', Georgia, serif;
+    font-style: italic;
+    font-size: 0.9rem;
+    color: #8b6914;
+    background: rgba(254, 252, 247, 0.94);
+    border: 1px solid #dfc9a4;
+    border-radius: 0.5rem;
+    padding: 0.25rem 0.7rem;
+    margin: 0;
   }
 
   /* Closed-book state: the cover stands at the leather FRAME's footprint,

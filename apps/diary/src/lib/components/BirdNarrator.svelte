@@ -46,6 +46,10 @@ let {
 
 let phase: BirdPhase = $state('idle');
 let rate = $state(1.0);
+// A play attempt that died before any audio (loading → idle) means the TTS
+// service is unreachable — say so instead of silently going idle. Cleared on
+// the next attempt or on success. Provisional; the ribbon ho designs it.
+let voiceResting = $state(false);
 
 // ── StreamCtx ─────────────────────────────────────────────────────────────
 //
@@ -100,6 +104,8 @@ function newStreamCtx(baseOffset: number): StreamCtx {
 
 function setPhase(p: BirdPhase) {
   if (phase === p) return;
+  if (p === 'loading' || p === 'playing') voiceResting = false;
+  if (phase === 'loading' && p === 'idle') voiceResting = true;
   phase = p;
   onPhaseChange?.(p);
 }
@@ -459,6 +465,7 @@ onDestroy(() => stop());
   onclick={onBirdClick}
   class="spell-bird"
   class:is-loading={phase === 'loading'}
+  class:is-resting={voiceResting}
   class:is-playing={phase === 'playing'}
   class:is-paused={phase === 'paused'}
   aria-label={phase === 'loading'
@@ -568,6 +575,14 @@ onDestroy(() => stop());
     animation: bird-waiting 0.9s ease-in-out infinite;
   }
   .spell-bird.is-loading::after { content: "soon…"; }
+
+  /* Voice service unreachable: the bird says so instead of silently sitting
+     back down. Same visual slot as the loading caption. */
+  .spell-bird.is-resting::after {
+    content: "the voice is resting";
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
 
   /* Nest of twigs — appears only while the bird is reading; tap to stop. */
   .spell-nest {
