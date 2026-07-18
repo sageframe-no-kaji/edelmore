@@ -124,11 +124,6 @@
     from { transform: rotateY(90deg); }
     to { transform: rotateY(0deg); }
   }
-  @keyframes edelmore-hold-then-yield {
-    0%, 50% { opacity: 1; }
-    50.01%, 100% { opacity: 0; }
-  }
-
   /* ── Forward: right page turns leftward over the spine ── */
   html[data-page-flip='forward']::view-transition-old(page-right) {
     animation: edelmore-lift-to-edge-left 350ms cubic-bezier(0.4, 0, 1, 1) both;
@@ -140,8 +135,10 @@
     animation: none; /* revealed beneath the lifting page */
   }
   html[data-page-flip='forward']::view-transition-old(page-left) {
-    animation: edelmore-hold-then-yield 700ms linear both;
-    z-index: 1; /* old spread reads intact until the midpoint */
+    /* The old left page stays for the WHOLE turn — in a real book it remains
+       visible beneath the falling leaf until the leaf lands on it. The new
+       left face (default-stacked above) covers it as it falls. */
+    animation: none;
   }
   html[data-page-flip='forward']::view-transition-new(page-left) {
     animation: edelmore-fall-from-edge-right 350ms 350ms cubic-bezier(0, 0, 0.2, 1) both;
@@ -160,8 +157,8 @@
     animation: none;
   }
   html[data-page-flip='backward']::view-transition-old(page-right) {
-    animation: edelmore-hold-then-yield 700ms linear both;
-    z-index: 1;
+    /* Mirror of forward: stays beneath the falling leaf until covered. */
+    animation: none;
   }
   html[data-page-flip='backward']::view-transition-new(page-right) {
     animation: edelmore-fall-from-edge-left 350ms 350ms cubic-bezier(0, 0, 0.2, 1) both;

@@ -67,6 +67,7 @@ describe('paginateBook', () => {
     const ref = {} as HTMLElement;
 
     paginateBook({
+      gap: () => new Promise((r) => setTimeout(r, 0)),
       book,
       measurer,
       referenceEl: ref,
@@ -92,6 +93,7 @@ describe('paginateBook', () => {
     const landed: Array<[number, number[]]> = [];
 
     paginateBook({
+      gap: () => new Promise((r) => setTimeout(r, 0)),
       book,
       measurer,
       referenceEl: {} as HTMLElement,
@@ -109,6 +111,7 @@ describe('paginateBook', () => {
     const landed: number[] = [];
 
     const cancel = paginateBook({
+      gap: () => new Promise((r) => setTimeout(r, 0)),
       book,
       measurer,
       referenceEl: {} as HTMLElement,
@@ -126,6 +129,7 @@ describe('paginateBook', () => {
     const { measurer } = fakeMeasurer([]);
     const landed: number[] = [];
     paginateBook({
+      gap: () => new Promise((r) => setTimeout(r, 0)),
       book: fakeBook([]),
       measurer,
       referenceEl: {} as HTMLElement,
@@ -145,6 +149,7 @@ describe('paginateBook', () => {
       return t;
     };
     paginateBook({
+      gap: () => new Promise((r) => setTimeout(r, 0)),
       book: fakeBook(['AAA']),
       measurer,
       referenceEl: {} as HTMLElement,

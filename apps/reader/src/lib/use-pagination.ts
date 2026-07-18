@@ -54,24 +54,53 @@ export interface PaginateBookOptions {
   /** Injectable clock + logger — the testbed logs per-chapter timings. */
   now?: () => number;
   log?: (message: string) => void;
+  /** Injectable inter-chapter gap (tests); defaults to idle-time scheduling. */
+  gap?: () => Promise<void>;
 }
 
 /**
- * Paginate every chapter of a book, opening chapter first, one per macrotask so
- * the main thread (and first paint) is never blocked — dev-mode measurement
- * runs ~1-2s per chapter and a synchronous all-chapters loop froze the page for
- * the whole book. Returns a cancel function; calling it stops any chapters not
- * yet measured.
+ * Wait until the browser is idle before measuring the next background chapter.
+ * A bare setTimeout(0) queues chapters back-to-back: each measure is a ~1-2s
+ * main-thread task in dev mode, and the reader's first flips queue BEHIND that
+ * crunch (the "brutally slow" first page turns). requestIdleCallback yields to
+ * interaction and animation between chapters; the timeout bound keeps the
+ * background sweep finishing even on a busy page. setTimeout fallback for
+ * environments without rIC (happy-dom, Safari < 18.2? — fallback keeps a real
+ * gap so interaction wins).
+ */
+/* v8 ignore start -- environment-probe shim: which scheduler exists is a
+   property of the runtime (rIC in browsers, absent in happy-dom), not logic;
+   tests inject their own gap via PaginateBookOptions.gap. */
+function idleGap(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(() => resolve(), { timeout: 2000 });
+    } else {
+      setTimeout(resolve, 250);
+    }
+  });
+}
+/* v8 ignore stop */
+
+/**
+ * Paginate every chapter of a book: the opening chapter immediately (it is
+ * what the reader sees), the rest in the browser's idle time so measurement
+ * never competes with flips. Returns a cancel function; calling it stops any
+ * chapters not yet measured.
  */
 export function paginateBook(options: PaginateBookOptions): () => void {
   const { book, measurer, referenceEl, onSplits } = options;
   const now = options.now ?? (() => performance.now());
+  const gap = options.gap ?? idleGap;
   const opening = openingChapter(book.chapters);
   const order = paginationOrder(book.chapters.length, opening);
 
   let cancelled = false;
   void (async () => {
+    let first = true;
     for (const i of order) {
+      if (!first) await gap();
+      first = false;
       if (cancelled) return;
       const chapter = book.chapters[i];
       const t0 = now();
@@ -81,7 +110,6 @@ export function paginateBook(options: PaginateBookOptions): () => void {
       options.log?.(
         `[book] chapter ${i} (${chapter.text.length} chars) paginated in ${Math.round(now() - t0)}ms`
       );
-      await new Promise((resolve) => setTimeout(resolve, 0));
     }
   })();
 

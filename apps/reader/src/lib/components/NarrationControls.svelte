@@ -84,19 +84,42 @@ const primaryLabel = $derived(
 </div>
 
 <style>
-  /* No design here — the ribbon is practitioner territory. Just enough to keep
-     the provisional buttons legible against the dev route's dim backdrop. */
+  /* Provisional card — the real home for these controls is the ribbon
+     (practitioner design ho). Until then: a visible parchment card in the
+     family language, nothing more. */
   .dev-narration-controls {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.6rem;
     align-items: center;
-    font-family: monospace;
-    font-size: 0.8rem;
-    color: #e8ddb5;
+    font-family: 'EB Garamond', Georgia, serif;
+    font-size: 0.95rem;
+    color: #4a3728;
+    background: rgba(254, 252, 247, 0.94);
+    border: 1px solid #dfc9a4;
+    border-radius: 0.6rem;
+    padding: 0.45rem 0.9rem;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+  }
+  .dev-narration-controls button {
+    font: inherit;
+    color: #8b6914;
+    background: transparent;
+    border: 1px solid #dfc9a4;
+    border-radius: 0.35rem;
+    padding: 0.15rem 0.65rem;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .dev-narration-controls button:hover:not(:disabled) {
+    opacity: 0.7;
+  }
+  .dev-narration-controls button:disabled {
+    opacity: 0.35;
+    cursor: default;
   }
   .rate-group {
     display: inline-flex;
-    gap: 0.25rem;
+    gap: 0.3rem;
     align-items: center;
   }
 </style>
