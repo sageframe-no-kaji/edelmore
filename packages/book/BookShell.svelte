@@ -1,7 +1,4 @@
 <script lang="ts">
-import { tweened } from 'svelte/motion';
-import { cubicOut } from 'svelte/easing';
-import { tick } from 'svelte';
 import type { Snippet } from 'svelte';
 import './styles.css';
 
@@ -46,244 +43,55 @@ const compressedProgress = $derived(progress ** 0.85);
 const leftStack = $derived(compressedProgress);
 const rightStack = $derived(1 - compressedProgress);
 
-// ── Page-flip primitive (lifted from the diary's +layout.svelte) ────────────
+// ── Page-flip primitive (View Transitions; reader Ho-04, Phase E) ───────────
 //
-// Forward: only the right page rotates, pivoting at its left edge (= spine).
-// Backward: only the left page rotates, pivoting at its right edge (= spine).
-//
-// The rotating wrapper has TWO absolutely-positioned faces:
-//   - front: clone of the OLD page (snapshot taken before mutation)
-//   - back: clone of the NEW page (snapshot taken after mutation),
-//           pre-rotated 180° so its content reads correctly when revealed.
-// Both faces use `backface-visibility: hidden` so each is visible only on
-// the matching half of the rotation arc.
-//
-// The live (now-new-content) page underneath is hidden via `visibility`
-// during the rotation so it doesn't bleed around the rotating wrapper.
+// The browser snapshots the live DOM (parent CSS context intact), runs
+// mutate(), and animates OLD → NEW. The 3D book turn is styled on the
+// ::view-transition pseudo-elements in styles.css, with the flip direction
+// carried on <html data-page-flip>. Without View Transitions support the
+// page changes instantly (Decision 9: one animation path, no clone fallback —
+// the clone-rotate mechanism this replaced lived here until Phase E; see the
+// ho document for its architecture and why it was retired).
 
-const flipDurationMs = 700;
-const flipAngle = tweened(0, { duration: flipDurationMs, easing: cubicOut });
 let isFlipping = $state(false);
 // biome-ignore lint/style/useConst: bind:this requires let — Biome doesn't see template bindings
 let bookShellEl: HTMLDivElement | null = $state(null);
-
-function getLivePage(direction: 'forward' | 'backward'): HTMLElement | null {
-  const selector = direction === 'forward' ? '.page-right' : '.page-left';
-  return bookShellEl?.querySelector<HTMLElement>(`.spread ${selector}`) ?? null;
-}
-
-function makeFace(source: HTMLElement, isBack: boolean): HTMLElement {
-  const clone = source.cloneNode(true) as HTMLElement;
-  clone.style.position = 'absolute';
-  clone.style.top = '0';
-  clone.style.left = '0';
-  clone.style.width = '100%';
-  clone.style.height = '100%';
-  clone.style.margin = '0';
-  clone.style.backfaceVisibility = 'hidden';
-  // Strip page edge artifacts:
-  //  - filter:drop-shadow would double up against the live page underneath
-  //  - boxShadow: the outer-edge 2px strip becomes visible at edge-on angles
-  //  - clipPath: the clone's clip-path must not differ subpixel-wise from
-  //    the live page's, otherwise the live's 2px inset strip peeks out at
-  //    the bump points. Making the clone a clean rectangle guarantees full
-  //    coverage with no peek.
-  clone.style.filter = 'none';
-  clone.style.boxShadow = 'none';
-  clone.style.clipPath = 'none';
-  clone.style.visibility = 'visible';
-  if (isBack) clone.style.transform = 'rotateY(180deg)';
-  return clone;
-}
 
 export async function flip(
   direction: 'forward' | 'backward',
   mutate: () => void | Promise<void>
 ): Promise<void> {
   if (isFlipping) return;
-  if (!bookShellEl) {
-    await mutate();
-    return;
-  }
-  if (
+  const reducedMotion =
     typeof window !== 'undefined' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  ) {
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const vt =
+    typeof document !== 'undefined' && typeof document.startViewTransition === 'function';
+  if (!bookShellEl || reducedMotion || !vt) {
     await mutate();
     return;
   }
 
-  // View Transitions path (Decision 1 / Decision 9). When the browser supports
-  // it, hand the page turn to startViewTransition: it snapshots the live DOM,
-  // runs mutate(), and animates OLD → NEW. No clones, no rotating wrapper, no
-  // flip-hidden — each page keeps its parent-CSS context because the browser
-  // captures it in place, which is what dissolves the clone-out-of-context
-  // artifact family. The visible animation is the browser's default crossfade
-  // for now; Phase C styles the ::view-transition pseudo-elements into the 3D
-  // book turn.
-  if (
-    typeof document !== 'undefined' &&
-    typeof document.startViewTransition === 'function'
-  ) {
-    // AT-02 / Decision 11: the try/finally invariant is preserved on this
-    // branch too. isFlipping is released whether the transition completes or
-    // mutate() rejects, and the transition owns its own pseudo-elements — there
-    // is nothing for us to strand, so cleanup is the flag and the direction
-    // attribute.
-    isFlipping = true;
-    // Direction hint for the ::view-transition CSS (styles.css): the turn's
-    // choreography is directional and CSS can't know which way the page went.
-    document.documentElement.setAttribute('data-page-flip', direction);
-    try {
-      const transition = document.startViewTransition(() =>
-        Promise.resolve(mutate())
-      );
-      // finished rejects iff mutate() rejects (surfacing to the caller, AT-02);
-      // otherwise it resolves when the animation ends, holding isFlipping for
-      // the whole turn.
-      await transition.finished;
-    } finally {
-      document.documentElement.removeAttribute('data-page-flip');
-      isFlipping = false;
-    }
-    return;
-  }
-
-  // No View Transitions support: fall through to the clone-rotate path below,
-  // unchanged. (Phase E replaces this fallback with a plain `await mutate()`
-  // per Decision 9; until then the legacy animation stays as the fallback.)
-
-  // Front face = OLD page being turned (forward = right; backward = left).
-  // Opposite = the OLD page on the other side, which stays visible during
-  // the first half of the flip (so the user sees the OLD spread until the
-  // turning page passes 90°).
-  const oldFront = getLivePage(direction);
-  const oppositeDirection = direction === 'forward' ? 'backward' : 'forward';
-  const oldOpposite = getLivePage(oppositeDirection);
-  if (!oldFront) {
-    await mutate();
-    return;
-  }
-
-  // Claim the flip BEFORE the forward-flip delay — during that 500ms the
-  // guard at the top otherwise let a second flip start concurrently
-  // (double-click = double navigation + overlapping clone animations).
+  // AT-02 / Decision 11: isFlipping is released whether the transition
+  // completes or mutate() rejects; the transition owns its own
+  // pseudo-elements, so cleanup is the flag and the direction attribute.
   isFlipping = true;
-
-  // Cleanup handles for the finally block. mutate() can reject (e.g. a
-  // failed routed navigation) at any point after the flag is claimed, so
-  // each handle is assigned as its resource is created and released
-  // unconditionally below — otherwise a single rejection leaves isFlipping
-  // latched true and clones/flip-hidden stranded in the DOM.
-  let wrapperEl: HTMLDivElement | null = null;
-  let oppositeOverlay: HTMLElement | null = null;
-  let unsubscribe: (() => void) | null = null;
-
+  document.documentElement.setAttribute('data-page-flip', direction);
   try {
-    if (direction === 'forward') {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-
-    // Snapshot the OLD turning page (front face) and OLD opposite-side page
-    // (static overlay) — both BEFORE mutation, so they hold the OLD content.
-    const frontFace = makeFace(oldFront, false);
-    oppositeOverlay = oldOpposite
-      ? (() => {
-          const clone = oldOpposite.cloneNode(true) as HTMLElement;
-          clone.style.position = 'absolute';
-          clone.style.top = '0';
-          clone.style.width = '50%';
-          clone.style.height = '100%';
-          clone.style.left = oppositeDirection === 'backward' ? '0' : '50%';
-          clone.style.margin = '0';
-          clone.style.pointerEvents = 'none';
-          clone.style.zIndex = '45';
-          clone.style.filter = 'none';
-          clone.style.boxShadow = 'none';
-          clone.style.clipPath = 'none';
-          clone.style.visibility = 'visible';
-          return clone;
-        })()
-      : null;
-
-    // Build the rotating wrapper with the front face. Back face is added
-    // after mutation. The wrapper at rotateY(0deg) sits on the same-side
-    // half showing the OLD turning page content. All positioning is inline
-    // (not via CSS classes) so there's zero risk of cascade/specificity
-    // putting the wrapper on the wrong half.
-    const wrapper = document.createElement('div');
-    wrapperEl = wrapper;
-    wrapper.style.position = 'absolute';
-    wrapper.style.top = '0';
-    wrapper.style.width = '50%';
-    wrapper.style.height = '100%';
-    wrapper.style.left = direction === 'forward' ? '50%' : '0';
-    wrapper.style.transformOrigin = direction === 'forward' ? 'left center' : 'right center';
-    wrapper.style.transformStyle = 'preserve-3d';
-    wrapper.style.willChange = 'transform';
-    wrapper.style.zIndex = '50';
-    wrapper.style.pointerEvents = 'none';
-    wrapper.style.transform = 'rotateY(0deg)';
-    wrapper.appendChild(frontFace);
-
-    // CRITICAL: insert overlay + wrapper BEFORE awaiting mutate. Once we
-    // await, the browser can paint, and live pages will have updated to NEW
-    // content under us. The OLD-content overlay must be in place by then.
-    // Hide both live pages via the flip-hidden class so neither's NEW content
-    // can peek out from under the rotating wrapper (same-side, where the
-    // wrapper foreshortens) or from clip-path bump mismatches with the
-    // overlay (opposite-side).
-    if (oppositeOverlay) bookShellEl.appendChild(oppositeOverlay);
-    bookShellEl.appendChild(wrapper);
-    const livePages = { same: oldFront, opposite: oldOpposite };
-    livePages.same.classList.add('flip-hidden');
-    livePages.opposite?.classList.add('flip-hidden');
-
-    // Run the mutation (sync state change, or async routed navigation).
-    // A rejection propagates to the caller; the finally below cleans up.
-    await Promise.resolve(mutate());
-    await tick();
-
-    // Tween the rotation. backFace is NOT appended yet — we add it at the
-    // 90° midpoint and remove the frontFace then too. This avoids relying
-    // on backface-visibility:hidden, which doesn't always work reliably in
-    // nested 3D contexts (without it, the back face's rotateY(180°) shows
-    // its NEW content MIRRORED during 0-90°, visible behind the front face).
-    // Each face is only in the DOM during the half-rotation it should be
-    // visible in.
-    let crossedMidpoint = false;
-    flipAngle.set(0, { duration: 0 });
-    unsubscribe = flipAngle.subscribe((angle) => {
-      wrapper.style.transform = `rotateY(${angle}deg)`;
-      if (!crossedMidpoint && Math.abs(angle) >= 90) {
-        crossedMidpoint = true;
-        // Swap front face out, back face in. Wrapper at 90° is edge-on, so
-        // the swap happens during its invisible moment.
-        frontFace.remove();
-        const newBack = getLivePage(oppositeDirection);
-        if (newBack) wrapper.appendChild(makeFace(newBack, true));
-        livePages.same.classList.remove('flip-hidden');
-        livePages.opposite?.classList.remove('flip-hidden');
-        if (oppositeOverlay?.parentNode) oppositeOverlay.remove();
-      }
-    });
-    const target = direction === 'forward' ? -180 : 180;
-    await flipAngle.set(target);
+    const transition = document.startViewTransition(() => Promise.resolve(mutate()));
+    // finished rejects iff mutate() rejects (surfacing to the caller);
+    // otherwise it resolves when the animation ends, holding isFlipping
+    // for the whole turn.
+    await transition.finished;
   } finally {
-    // Cleanup — unconditional, success and failure alike. Every operation
-    // is a no-op when its resource was never created/added.
-    unsubscribe?.();
-    wrapperEl?.remove();
-    if (oppositeOverlay?.parentNode) oppositeOverlay.remove();
-    oldFront.classList.remove('flip-hidden');
-    oldOpposite?.classList.remove('flip-hidden');
+    document.documentElement.removeAttribute('data-page-flip');
     isFlipping = false;
   }
 }
 </script>
 
 <div
-  class="book-frame flip-stage relative aspect-[331/194]"
+  class="book-frame relative aspect-[331/194]"
   class:is-closed={isClosed}
   class:is-cover-state={isCoverState}
   class:is-back-cover-state={isBackCoverState}

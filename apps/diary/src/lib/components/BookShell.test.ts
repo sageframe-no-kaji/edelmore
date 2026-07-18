@@ -61,32 +61,20 @@ function renderShell() {
 // isFlipping latched true or strand clones / flip-hidden classes in the DOM.
 //
 // happy-dom has no `document.startViewTransition`, so these exercise flip()'s
-// no-View-Transitions branch — the clone-rotate fallback. The stubbed-present
-// branch is covered in the block below.
+// no-View-Transitions branch — Phase E retired the clone-rotate fallback
+// (ho-04 Decision 9): without startViewTransition the page changes instantly.
 describe('BookShell.flip() exception safety (no View Transitions)', () => {
-  it('cleans up clones and flip-hidden classes when mutate() rejects', async () => {
+  it('mutates instantly, adds no clone DOM, and propagates rejection', async () => {
     const { component, container, shellEl } = renderShell();
     const baselineChildCount = shellEl.childElementCount;
 
-    // Sentinels captured mid-flight, at mutate() time: prove the animated
-    // path was in progress (clones inserted, live pages hidden) before the
-    // rejection, so the cleanup assertions below aren't trivially true.
-    let hiddenAtMutate = 0;
-    let shellChildrenAtMutate = 0;
-    const mutate = vi.fn(() => {
-      hiddenAtMutate = container.querySelectorAll('.flip-hidden').length;
-      shellChildrenAtMutate = shellEl.childElementCount;
-      return Promise.reject(new Error('boom'));
-    });
+    const mutate = vi.fn(() => Promise.reject(new Error('boom')));
 
     // The rejection propagates to the caller — not swallowed.
     await expect(component.flip('forward', mutate)).rejects.toThrow('boom');
 
     expect(mutate).toHaveBeenCalledOnce();
-    // Both live pages were hidden and overlay + wrapper were attached…
-    expect(hiddenAtMutate).toBe(2);
-    expect(shellChildrenAtMutate).toBe(baselineChildCount + 2);
-    // …and the failure path removed all of it.
+    // No clone-era artifacts exist on any path anymore.
     expect(container.querySelectorAll('.flip-hidden')).toHaveLength(0);
     expect(shellEl.childElementCount).toBe(baselineChildCount);
   });
