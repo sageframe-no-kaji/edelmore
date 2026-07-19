@@ -2,7 +2,7 @@
 
 _Where each app's Kamae chain sits right now. A signpost — update when a ho ships, opens, or gets filed. The chain docs themselves live in each app's gitignored `ho-process/` directory._
 
-Last updated: 2026-07-17 (reader Ho-04 Phase C merged #26 — 3D View Transitions turn, practitioner-verified; reader book route + whole-chapter narration shipped #27–#29: state machine, positions, library switching, audible read-along on `/`).
+Last updated: 2026-07-18 (reader **Kamae 2 settled** — all seven deferred decisions resolved + identity/curation mechanic, recorded in `kamae-2-…-system-design.md` Part II; ready for Kamae 4 re-flow. Also caught up: reader Ho-04 Phase E merged #31 — clone-rotate retired, `flip()` is View Transitions only; provisional dignity + mechanics #30; "the voice is resting" TTS-failure state in both apps #32).
 
 ---
 
@@ -27,13 +27,13 @@ Extraction hos (Ho-01/02/03) shipped from the reader's chain, not the diary's �
 | Item | Status | Notes |
 |---|---|---|
 | Kamae 1 (seed) | ✅ done | `seed.md` |
-| Kamae 2 (system design) | 🟡 **extraction portion settled; reader-app portion pending** | Seven open decisions — see `notes/kamae-2-followup-prep.md` for prep. |
-| Kamae 4 (ho outline) | 🟡 exists; awaits Kamae 2 update | `kamae-4-ho-outline.md` |
-| Kamae 5 (per-ho docs) | ⏳ not yet | |
+| Kamae 2 (system design) | ✅ **settled (2026-07-18)** | Reader-app architecture resolved in Part II — seven decisions + identity/curation mechanic (adoptable many-to-many ownership, dog-ear/bookmark kinds, roster identity). Provisional→target deltas named for Kamae 4. |
+| Kamae 4 (ho outline) | ✅ **re-flowed (2026-07-19)** | 17 hos / 6 phases. Shipped work numbered Ho-05–11; forward deltas sequenced Ho-12 (household migration) → Ho-13–16 (the magic) → Ho-17 (deploy). |
+| Kamae 5 (per-ho docs) | 🟢 **next — author Ho-12** | Household target migration (`book_owners` many-to-many · `place_marks.kind` · roster). `ho-kamae-5-authoring-collaborator`. |
 | Ho-01 — extract `@edelmore/design` | ✅ shipped (`078bf23`) | |
 | Ho-02 — extract `@edelmore/book` | ✅ shipped (`f29b619`) | |
 | Ho-03 — extract `@edelmore/narration` | ✅ shipped (`5f1bce1`) | Scope drift acknowledged in `hos/ho-03-extract-narration.md → Reflect`. Diary Ho-08 filed as the follow-up. |
-| **Ho-04 — page-turn rewrite (View Transitions in `@edelmore/book`)** | 🟢 **open — Phases A–C merged (#23, #26), practitioner-verified; D/E remain** | Supersedes diary ho-11. 3D turn live; edge checks, 500ms verdict, clone-code deletion pending. `hos/ho-04-page-turn-view-transitions.md` |
+| **Ho-04 — page-turn rewrite (View Transitions in `@edelmore/book`)** | 🟢 **open — Phases A–E merged (#23, #26, #31), practitioner-verified; clone-rotate retired, `flip()` is View Transitions only** | Supersedes diary ho-11. Any remaining edge-check / verdict items are the tail. `hos/ho-04-page-turn-view-transitions.md` |
 | EPUB piping (scaffold, parser, library/ingestion, pagination + dev route) | ✅ shipped (#18–#21, 2026-07-03/04) | Built from `audit/R-AT-01…04` specs ahead of the Kamae 4 re-flow, per decisions in `notes/kamae-2-followup-prep.md` §2026-07-03. Kamae 4 assigns its numbers when it updates. |
 | Book route + narration (state machine, positions, library switching, whole-chapter engine, read-along wiring) | ✅ shipped (#27–#29, 2026-07-17) | `audit/R-AT-05…07`. Placeholder visuals throughout — cover art, transform, ribbon, dog-ears are the practitioner design hos. Listening pass pending. |
 | Ho-05+ | ⏳ awaits Kamae 2 follow-up (identity mechanic, decision 7) + Kamae 4 re-flow | |
@@ -44,9 +44,7 @@ Extraction hos (Ho-01/02/03) shipped from the reader's chain, not the diary's �
 
 | Move | Skill to invoke | Reads |
 |---|---|---|
-| **Reader Kamae 2 follow-up** — resolve the 7 open decisions | `ho-kamae-2-system-design-collaborator` | `apps/reader/ho-process/kamae-2-edelmore-reader-system-design.md` + `notes/kamae-2-followup-prep.md` |
-| **Reader Kamae 4 update** (after Kamae 2 lands) | `ho-kamae-4-overview-collaborator` | `apps/reader/ho-process/kamae-4-ho-outline.md` |
-| **Reader Ho-04 authoring** (after Kamae 4) | `ho-kamae-5-authoring-collaborator` | reader Kamae chain |
+| **Reader Ho-12 authoring** — household target migration (first forward ho) | `ho-kamae-5-authoring-collaborator` | `apps/reader/ho-process/kamae-4-ho-outline.md` (Ho-12) + Kamae 2 Part II R4 |
 | **Diary ho-13 listening pass** (gates the merged whole-entry narration) | none — practitioner + browser | `apps/diary/ho-process/hos/ho-13-whole-entry-narration.md` |
 
 ---
