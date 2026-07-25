@@ -10,6 +10,7 @@ import {
   getPersonByName,
   insertBook,
   listBooks,
+  listOwners,
 } from './db.js';
 import { buildEpub, minimalBook, notAZip, pngBytes } from './epub/fixtures.js';
 import { EpubParseError, parseEpub } from './epub/parse.js';
@@ -51,7 +52,10 @@ describe('ingestEpub', () => {
       language: 'en',
       cover_image: 'OEBPS/images/cover.png',
     });
-    expect(getPersonByName(db, 'Iona')?.id).toBe(book?.added_by);
+    const owners = listOwners(db, result.id);
+    expect(owners).toEqual([
+      { person_id: getPersonByName(db, 'Iona')?.id, person_name: 'Iona', original: 1 },
+    ]);
 
     // Disk artifacts: original bytes retained, book.json matches the parse,
     // cover + plate extracted under images/.
@@ -122,21 +126,30 @@ describe('ingestEpub', () => {
     vi.mocked(storage.writeBookArtifacts).mockImplementationOnce(async () => {
       // Simulate the racing upload completing while our disk write is in flight.
       const person = getOrCreatePerson(db, 'Marlowe');
-      insertBook(db, {
-        id: parsed.id,
-        title: parsed.title,
-        author: parsed.author,
-        language: parsed.language,
-        cover_image: parsed.coverImage,
-        added_by: person.id,
-      });
+      insertBook(
+        db,
+        {
+          id: parsed.id,
+          title: parsed.title,
+          author: parsed.author,
+          language: parsed.language,
+          cover_image: parsed.coverImage,
+        },
+        person.id
+      );
       throw new Error('simulated interleaving');
     });
 
     const result = await ingestEpub(db, dataDir, bytes, 'Iona');
     expect(result).toEqual({ id: parsed.id, created: false });
     // The winner's row (and its disk artifacts) are left untouched.
-    expect(getBook(db, parsed.id)?.added_by).toBe(getPersonByName(db, 'Marlowe')?.id);
+    expect(listOwners(db, parsed.id)).toEqual([
+      {
+        person_id: getPersonByName(db, 'Marlowe')?.id,
+        person_name: 'Marlowe',
+        original: 1,
+      },
+    ]);
     await expect(stat(bookJsonPath(dataDir, parsed.id))).rejects.toMatchObject({
       code: 'ENOENT',
     });

@@ -44,17 +44,22 @@ export async function ingestEpub(
   try {
     await writeBookArtifacts(dataDir, book, bytes, await referencedImages(book, bytes));
     // Transactional where it touches the DB: attribution row + book row
-    // commit together or not at all.
+    // commit together or not at all (insertBook opens its own nested
+    // transaction for the book + original-owner rows; better-sqlite3 nests
+    // that as a savepoint inside this one).
     db.transaction(() => {
       const person = getOrCreatePerson(db, addedBy);
-      insertBook(db, {
-        id: book.id,
-        title: book.title,
-        author: book.author,
-        language: book.language,
-        cover_image: book.coverImage,
-        added_by: person.id,
-      });
+      insertBook(
+        db,
+        {
+          id: book.id,
+          title: book.title,
+          author: book.author,
+          language: book.language,
+          cover_image: book.coverImage,
+        },
+        person.id
+      );
     })();
   } catch (err) {
     // If a concurrent upload of the same bytes won the insert race, its disk
