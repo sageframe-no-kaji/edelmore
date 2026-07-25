@@ -1,8 +1,9 @@
 /**
- * Shared request validation for the position and bookmark endpoints.
+ * Shared request validation for the position, marks, and owners endpoints.
  * Attribution-only discipline: a person name is a label, not a credential.
  */
 
+import type { MarkKind } from './db.js';
 import type { NormalizedBook } from './epub/model.js';
 
 export const MAX_PERSON_NAME_LENGTH = 40;
@@ -41,4 +42,18 @@ export function parseSpot(
   if (chapterIdx < 0 || chapterIdx >= book.chapters.length) return null;
   if (charOffset < 0 || charOffset > book.chapters[chapterIdx].text.length) return null;
   return { chapterIdx, charOffset };
+}
+
+const MARK_KINDS: readonly MarkKind[] = ['dog-ear', 'bookmark'];
+
+/**
+ * A mark kind: `'dog-ear'` (persistent fold) or `'bookmark'` (temporary
+ * slip). `MarkKind` is a TypeScript-only guarantee (db.ts, no SQL CHECK
+ * constraint) — this is the one place an unknown kind is turned away before
+ * it reaches `addMark`/`deleteOwnMark`. Returns null for anything else.
+ */
+export function parseMarkKind(value: unknown): MarkKind | null {
+  return typeof value === 'string' && (MARK_KINDS as readonly string[]).includes(value)
+    ? (value as MarkKind)
+    : null;
 }
