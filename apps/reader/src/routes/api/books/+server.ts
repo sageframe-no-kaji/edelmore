@@ -12,7 +12,7 @@ export const GET: RequestHandler = async ({ locals }) => {
     title: book.title,
     author: book.author,
     cover: book.cover_image,
-    addedBy: book.added_by_name,
+    addedBy: book.original_owner_name,
     positions: listPositions(locals.db, book.id).map((p) => ({
       person: p.person_name,
       chapterIdx: p.chapter_idx,
