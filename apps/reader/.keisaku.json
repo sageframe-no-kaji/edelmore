@@ -8,7 +8,10 @@
       "importance": 4,
       "featured": false,
       "group": "adaptive-tools",
-      "themes": ["agency", "attention"],
+      "themes": [
+        "agency",
+        "attention"
+      ],
       "sort_order_within_group": 20,
       "tags": [
         "software",
@@ -21,7 +24,9 @@
         "accessibility",
         "personal"
       ],
-      "media": ["software"],
+      "media": [
+        "software"
+      ],
       "status": "scaffolded",
       "repo": "git@github-no-kaji:sageframe-no-kaji/edelmore.git",
       "deployment": [
@@ -32,7 +37,7 @@
       ],
       "tech_stack": "JavaScript (@edelmore/book, @edelmore/design, @edelmore/narration, better-sqlite3, fast-xml-parser, jszip)",
       "created": "2026-06-14",
-      "last_updated": "2026-07-14",
+      "last_updated": "2026-07-18",
       "conceived": "2026-06-14",
       "personal_stake": "For a kid who hears stories better than she reads them — and for anyone who wants reading to feel like the thing it used to be.",
       "short_description": "A self-hosted read-along EPUB reader that feels like a real book — a songbird in the margin reads aloud while each word glows as it is spoken.",
@@ -55,12 +60,12 @@
       "usage": "none",
       "state": {
         "stage": "dev",
-        "last": "scaffolded on the diary's shared `@edelmore/*` packages; ho-02 (extract book) and ho-03 (extract narration) done; ho-04 (page-turn rewrite, View Transitions in @edelmore/book) in progress on `feat/ho-04-phase-cde` — phase C landed.",
-        "next": "finish ho-04 (remaining phases), merge `feat/ho-04-phase-cde`.",
-        "as_of": "2026-07-14"
+        "last": "ho-04 shipped (page-turn rewrite, View Transitions in @edelmore/book, phases A–E, #23/#26/#31). Kamae 2 Part II settled 2026-07-18 (the seven reader-app decisions + the identity/curation mechanic: adoptable many-to-many ownership, dog-ear/bookmark kinds, roster identity; reading ≠ owning). Kamae 4 re-flowed to 17 hos / 6 phases — shipped reader-app work numbered Ho-05–11, forward deltas Ho-12–17. Ho-12 (household target migration) authored: Think done, two agent tasks (AT-01 data layer, AT-02 endpoints+picker). This chain is now versioned as a nested private repo (sageframe-no-kaji/edelmore-reader-ho-process).",
+        "next": "execute Ho-12: hand `agent-tasks/Ho-12-AT-01.md` (schema migration + db.ts data layer) to a Sonnet-5 agent, review, then `Ho-12-AT-02.md` (endpoints + roster picker). AT-02 blocks on AT-01.",
+        "as_of": "2026-07-19"
       },
       "_keisaku": {
-        "generated_at": "2026-07-14T16:51:40",
+        "generated_at": "2026-07-19T11:32:58",
         "generator_version": "1",
         "sources": {
           "readme": "README.md",
@@ -71,7 +76,9 @@
         "derived_defaults": {
           "id": "reader",
           "name": "Edelmore Reader",
-          "media": ["software"],
+          "media": [
+            "software"
+          ],
           "status": "in-development",
           "created": "2026-06-19",
           "tags": [

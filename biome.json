@@ -29,7 +29,8 @@
       "data/**",
       "node_modules/**",
       "static/**",
-      "**/*.svelte"
+      "**/*.svelte",
+      "**/.keisaku.json"
     ]
   },
   "overrides": [
