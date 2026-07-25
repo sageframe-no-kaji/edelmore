@@ -2,7 +2,7 @@
 
 _Where each app's Kamae chain sits right now. A signpost — update when a ho ships, opens, or gets filed. The chain docs themselves live in each app's gitignored `ho-process/` directory._
 
-Last updated: 2026-07-24 (reader **Ho-12 executing** — AT-01, the household data layer, handed to an agent). Prior: 2026-07-18 (reader **Kamae 2 settled** — all seven deferred decisions resolved + identity/curation mechanic, recorded in `kamae-2-…-system-design.md` Part II; ready for Kamae 4 re-flow. Also caught up: reader Ho-04 Phase E merged #31 — clone-rotate retired, `flip()` is View Transitions only; provisional dignity + mechanics #30; "the voice is resting" TTS-failure state in both apps #32).
+Last updated: 2026-07-25 (reader **Ho-12** — AT-01 merged (#33), AT-02 open for review (#34); `audit/` now tracked). Prior: 2026-07-18 (reader **Kamae 2 settled** — all seven deferred decisions resolved + identity/curation mechanic, recorded in `kamae-2-…-system-design.md` Part II; ready for Kamae 4 re-flow. Also caught up: reader Ho-04 Phase E merged #31 — clone-rotate retired, `flip()` is View Transitions only; provisional dignity + mechanics #30; "the voice is resting" TTS-failure state in both apps #32).
 
 ---
 
@@ -30,7 +30,7 @@ Extraction hos (Ho-01/02/03) shipped from the reader's chain, not the diary's �
 | Kamae 2 (system design) | ✅ **settled (2026-07-18)** | Reader-app architecture resolved in Part II — seven decisions + identity/curation mechanic (adoptable many-to-many ownership, dog-ear/bookmark kinds, roster identity). Provisional→target deltas named for Kamae 4. |
 | Kamae 4 (ho outline) | ✅ **re-flowed (2026-07-19)** | 17 hos / 6 phases. Shipped work numbered Ho-05–11; forward deltas sequenced Ho-12 (household migration) → Ho-13–16 (the magic) → Ho-17 (deploy). |
 | Kamae 5 (per-ho docs) | ✅ **Ho-12 authored (2026-07-19)** | Household target migration (`book_owners` many-to-many · `place_marks.kind` · roster), Think phase done, two agent tasks written. |
-| **Ho-12 — household target migration** | 🟡 **executing — AT-01 (data layer) in flight 2026-07-24** | AT-01 = schema migration + `db.ts` ownership/mark/roster layer. AT-02 (endpoints + roster picker) blocks on it. `hos/ho-12-household-target-migration.md` |
+| **Ho-12 — household target migration** | 🟡 **AT-01 merged (#33); AT-02 open for review (#34)** | AT-01 = schema migration + `db.ts` ownership/mark/roster layer, shipped `d0e5227`. AT-02 = owners/marks/people endpoints + roster picker. Closes when #34 merges (Reflect + K6 + K4 build record). `hos/ho-12-household-target-migration.md` |
 | Ho-01 — extract `@edelmore/design` | ✅ shipped (`078bf23`) | |
 | Ho-02 — extract `@edelmore/book` | ✅ shipped (`f29b619`) | |
 | Ho-03 — extract `@edelmore/narration` | ✅ shipped (`5f1bce1`) | Scope drift acknowledged in `hos/ho-03-extract-narration.md → Reflect`. Diary Ho-08 filed as the follow-up. |
@@ -45,7 +45,7 @@ Extraction hos (Ho-01/02/03) shipped from the reader's chain, not the diary's �
 
 | Move | Skill to invoke | Reads |
 |---|---|---|
-| **Review reader Ho-12-AT-01** — then release AT-02 (endpoints + roster picker) | none — practitioner review of the PR | `apps/reader/ho-process/agent-tasks/Ho-12-AT-02.md` |
+| **Review reader Ho-12-AT-02 (#34)** — merging it closes Ho-12 | none — practitioner review of the PR | `apps/reader/ho-process/hos/ho-12-household-target-migration.md` (Reflect + closing ritual) |
 | **Diary ho-13 listening pass** (gates the merged whole-entry narration) | none — practitioner + browser | `apps/diary/ho-process/hos/ho-13-whole-entry-narration.md` |
 
 ---
