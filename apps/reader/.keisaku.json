@@ -37,7 +37,7 @@
       ],
       "tech_stack": "JavaScript (@edelmore/book, @edelmore/design, @edelmore/narration, better-sqlite3, fast-xml-parser, jszip)",
       "created": "2026-06-14",
-      "last_updated": "2026-07-18",
+      "last_updated": "2026-07-25",
       "conceived": "2026-06-14",
       "personal_stake": "For a kid who hears stories better than she reads them — and for anyone who wants reading to feel like the thing it used to be.",
       "short_description": "A self-hosted read-along EPUB reader that feels like a real book — a songbird in the margin reads aloud while each word glows as it is spoken.",
@@ -58,6 +58,7 @@
       ],
       "availability": "internal",
       "usage": "none",
+      "headline": "execute Ho-12: hand agent-tasks/Ho-12-AT-01.md (schema migration + db.ts data layer) to a Sonnet-5 agent, review, then Ho-12-AT-02.md…",
       "state": {
         "stage": "dev",
         "last": "ho-04 shipped (page-turn rewrite, View Transitions in @edelmore/book, phases A–E, #23/#26/#31). Kamae 2 Part II settled 2026-07-18 (the seven reader-app decisions + the identity/curation mechanic: adoptable many-to-many ownership, dog-ear/bookmark kinds, roster identity; reading ≠ owning). Kamae 4 re-flowed to 17 hos / 6 phases — shipped reader-app work numbered Ho-05–11, forward deltas Ho-12–17. Ho-12 (household target migration) authored: Think done, two agent tasks (AT-01 data layer, AT-02 endpoints+picker). This chain is now versioned as a nested private repo (sageframe-no-kaji/edelmore-reader-ho-process).",
@@ -65,7 +66,7 @@
         "as_of": "2026-07-19"
       },
       "_keisaku": {
-        "generated_at": "2026-07-19T11:32:58",
+        "generated_at": "2026-11-16T10:49:45",
         "generator_version": "1",
         "sources": {
           "readme": "README.md",
@@ -94,7 +95,8 @@
           "substantive_description": [
             "Read-along ebook readers exist, and the technical problem — parsing EPUB, generating speech, highlighting words as they are spoken — is solved many times over. What none of them solve is the experience: every one feels like reading software, utilitarian and clinical, with no spatial sense of where you are in the book. Edelmore Reader's differentiator is not the technology but that the book metaphor is the product — the page turn, the warm serif typography, the soft green word-glow, with narration as one ingredient inside a larger reading experience rather than the feature. You upload an EPUB or pick from a built-in library of public-domain children's books; the book opens where you left off, turns its pages when the narration reaches the end of one, and remembers your place. It is the sibling of Edelmore Diary — reusing its book metaphor, narration stack, and cottage-core identity, gated on the diary's refactor into shared modules — built for kids who hear stories better than they read them.",
             "Planned stack: SvelteKit (TypeScript), SQLite via better-sqlite3, server-side EPUB parsing, CSS multi-column pagination, View Transitions page-turns, self-hosted Kokoro TTS, Tailwind v4, and Docker. Scaffolded — seed committed, no code yet."
-          ]
+          ],
+          "headline": "execute Ho-12: hand agent-tasks/Ho-12-AT-01.md (schema migration + db.ts data layer) to a Sonnet-5 agent, review, then Ho-12-AT-02.md…"
         },
         "contract_issues": []
       }
