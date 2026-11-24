@@ -27,7 +27,7 @@
         "software"
       ],
       "status": "shipped",
-      "repo": "git@github-no-kaji:sageframe-no-kaji/edelmore.git",
+      "repo": "https://github.com/sageframe-no-kaji/edelmore",
       "deployment": [
         {
           "label": "GitHub repo",
@@ -58,7 +58,7 @@
       "availability": "shipped",
       "usage": "others",
       "_keisaku": {
-        "generated_at": "2026-11-17T15:26:29",
+        "generated_at": "2026-11-24T17:07:22",
         "generator_version": "1",
         "sources": {
           "readme": "README.md",
